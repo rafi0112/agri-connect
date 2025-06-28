@@ -1,0 +1,37 @@
+import { Stack } from 'expo-router';
+
+export default function PaymentLayout() {
+  return (
+    <Stack>
+      <Stack.Screen 
+        name="success" 
+        options={{ 
+          title: 'Payment Successful',
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen 
+        name="fail" 
+        options={{ 
+          title: 'Payment Failed',
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen 
+        name="cancel" 
+        options={{ 
+          title: 'Payment Cancelled',
+          headerShown: false 
+        }} 
+      />
+      <Stack.Screen 
+        name="testing" 
+        options={{ 
+          title: 'Payment Testing',
+          headerShown: true,
+          headerTitle: 'Payment Testing'
+        }} 
+      />
+    </Stack>
+  );
+}

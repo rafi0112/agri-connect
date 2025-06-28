@@ -31,6 +31,7 @@ import * as Notifications from 'expo-notifications';
 import Toast from 'react-native-toast-message';
 import { getCurrentLocation, calculateDistance, formatDistance, isValidLocation, normalizeLocation } from '../../utils/location';
 import { openNavigation } from '../../utils/navigation';
+import { useAuth } from '../../context/AuthContext';
 
 const { width, height } = Dimensions.get('window');
 
@@ -63,7 +64,7 @@ type Shop = {
 	} | string;
 	image?: string;
 	rating?: number;
-	productsCount?: number;
+	stock?: number;
 	likes?: number;
 };
 
@@ -84,6 +85,7 @@ function ProductDetailScreen() {
 	const [likeCount, setLikeCount] = useState(0);
 	const { addToCart } = useCart();
 	const db = getFirestore(app);
+	const {user} = useAuth();
 
 	// Get user location on component mount
 	useEffect(() => {
@@ -139,7 +141,7 @@ function ProductDetailScreen() {
 							location: shopData.location || 'Location not specified',
 							image: shopData.image,
 							rating: shopData.rating || 0,
-							productsCount: shopData.productsCount || 0,
+							stock: shopData.stock || 0,
 						};
 						setShop(shopInfo);
 						// Initialize likes count from Firestore, defaulting to 0 if not present
@@ -268,6 +270,7 @@ function ProductDetailScreen() {
 			shopId: product.shopId,
 			shopName: shop?.name,
 			farmerId: shop?.farmerId,
+			userEmail: user?.email,
 		});
 		
 		setAddingToCart(true);
@@ -281,6 +284,7 @@ function ProductDetailScreen() {
 				shopId: product.shopId,
 				shopName: shop?.name,
 				farmerId: shop?.farmerId,
+				userEmail: user?.email,
 			});
 			
 			Toast.show({
@@ -439,7 +443,7 @@ function ProductDetailScreen() {
 							<View style={styles.shopDetailRow}>
 								<Ionicons name="storefront-outline" size={20} color="#2d5a3d" />
 								<Text style={styles.shopDetailText}>
-									{shop.productsCount || 0} products available
+									{shop.stock || 0} products available
 								</Text>
 							</View>
 							

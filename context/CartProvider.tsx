@@ -13,6 +13,7 @@ type CartItem = {
   shopId: string;
   shopName?: string;
   farmerId?: string;
+  userEmail?: string; // Optional, can be used to track who added the item
 };
 
 type CartContextType = {

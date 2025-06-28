@@ -896,7 +896,7 @@ const styles = StyleSheet.create({
 		marginLeft: 8,
 	},
 	orderButton: {
-		backgroundColor: '#4CAF50',
+		backgroundColor: '#14532d', // dark green
 		marginLeft: 8,
 	},
 	codButton: {
@@ -933,7 +933,7 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 	},
 	saveButton: {
-		backgroundColor: '#4CAF50',
+		backgroundColor: '#14532d', // dark green
 		padding: 12,
 		borderRadius: 8,
 		alignItems: 'center',
@@ -944,7 +944,7 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 	},
 	toggleButton: {
-		backgroundColor: '#4CAF50',
+		backgroundColor: '#14532d', // dark green
 		padding: 12,
 		borderRadius: 8,
 		alignItems: 'center',
@@ -1064,7 +1064,7 @@ const styles = StyleSheet.create({
 		lineHeight: 20,
 	},
 	payOnlineButton: {
-		backgroundColor: '#2196F3',
+		backgroundColor: '#14532d', // dark green for online payment
 		marginLeft: 8,
 	},
 	coordinatesContainer: {

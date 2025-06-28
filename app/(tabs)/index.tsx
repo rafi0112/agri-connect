@@ -62,6 +62,7 @@ export default function HomeScreen() {
 	const [searchQuery, setSearchQuery] = useState('');
 	const [selectedCategory, setSelectedCategory] = useState<string>('all');
 	const [categories, setCategories] = useState<Category[]>([]);
+	const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 	const db = getFirestore(app);
 
 	const OPENWEATHER_API_KEY = 'd734f951c52155a9771143721b7eb908';
@@ -69,16 +70,16 @@ export default function HomeScreen() {
 	// Updated the getCategoryIcon function to assign random icons for each category
 	const getCategoryIcon = (categoryName: string) => {
 		const icons = [
-			<MaterialCommunityIcons name='barley' size={24} color='#039BE5' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#6D4C41' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#FBC02D' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#8E24AA' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#FF5722' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#388E3C' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#FF9800' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#1976D2' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#7B1FA2' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#FFC107' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#86efac' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#bbf7d0' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#a7f3d0' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#6ee7b7' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#34d399' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#10b981' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#059669' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#047857' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#065f46' />,
+			<MaterialCommunityIcons name='barley' size={24} color='#064e3b' />,
 		];
 
 		// Generate a random index to pick an icon
@@ -206,7 +207,7 @@ export default function HomeScreen() {
 	if (loading) {
 		return (
 			<View style={styles.loadingContainer}>
-				<ActivityIndicator size='large' color='#4CAF50' />
+				<ActivityIndicator size='large' color='#2d5a3d' />
 			</View>
 		);
 	}
@@ -220,37 +221,49 @@ export default function HomeScreen() {
 			<View style={styles.topSection}>
 				<View style={styles.header}>
 					<View style={styles.headerLeft}>
-						<Text style={styles.welcomeText}>
-							Hello,{' '}
-							<Text style={styles.userName}>{user?.name || 'Guest'}</Text>
-						</Text>
+						<View style={styles.greetingContainer}>
+							<Text style={styles.welcomeText}>Hello there,</Text>
+							<View style={styles.userNameContainer}>
+								<Text style={styles.userName}>
+									{user?.name || 'Guest'}
+								</Text>
+								<View style={styles.userNameGlow} />
+							</View>
+						</View>
 
 						{weather && (
-							<View style={styles.weatherBox}>
-								<Ionicons
-									name={
-										weather.icon
-											? (`${weather.icon}-outline` as const)
-											: 'cloud-outline'
-									}
-									size={18}
-									color='#4CAF50'
-									style={{ marginRight: 6 }}
-								/>
-								<Text style={styles.weatherText}>
-									{weather.temp}°C • {weather.description}
-								</Text>
+							<View style={styles.weatherContainer}>
+								<View style={styles.weatherIconContainer}>
+									<Ionicons
+										name={
+											weather.icon
+												? (`${weather.icon}-outline` as const)
+												: 'cloud-outline'
+										}
+										size={22}
+										color='#34d399'
+									/>
+									<View style={styles.weatherIconGlow} />
+								</View>
+								<View style={styles.weatherInfo}>
+									<Text style={styles.weatherTemp}>{weather.temp}°C</Text>
+									<Text style={styles.weatherDesc}>{weather.description}</Text>
+								</View>
+								<View style={styles.weatherPulse} />
 							</View>
 						)}
 					</View>
 
 					<Link href='/profile' asChild>
 						<TouchableOpacity style={styles.profileIconContainer}>
-							<Ionicons
-								name='person-circle-outline'
-								size={60}
-								color='#4CAF50'
-							/>
+							<View style={styles.profileIconWrapper}>
+								<Ionicons
+									name='person-circle-outline'
+									size={48}
+									color='#ffffff'
+								/>
+								<View style={styles.profileGlow} />
+							</View>
 						</TouchableOpacity>
 					</Link>
 				</View>
@@ -265,7 +278,7 @@ export default function HomeScreen() {
 					/>
 					<TextInput
 						placeholder='Search products...'
-						placeholderTextColor='#9ca3af'
+						placeholderTextColor='#6b8e70'
 						style={styles.searchInput}
 						value={searchQuery}
 						onChangeText={setSearchQuery}
@@ -273,90 +286,159 @@ export default function HomeScreen() {
 				</View>
 			</View>
 
-			{/* Categories Horizontal Scroll */}
+			{/* --- MODERN CATEGORY SECTION --- */}
 			<View style={styles.sectionContainer}>
-				<Text style={styles.sectionTitle}>Categories</Text>
+				<View style={styles.sectionTitleRow}>
+					<Text style={styles.sectionTitle}>Categories</Text>
+				</View>
 				<FlatList
 					data={categories}
-					numColumns={4}
+					horizontal
+					showsHorizontalScrollIndicator={false}
 					keyExtractor={(item) => item.name}
+					contentContainerStyle={styles.categoriesHorizontalList}
 					renderItem={({ item }) => (
 						<TouchableOpacity
 							style={[
-								styles.categoryGridItem,
+								styles.categoryCardModern,
 								selectedCategory === item.name &&
-									styles.selectedCategoryGridItem,
+									styles.selectedCategoryCardModern,
 							]}
 							onPress={() => handleCategoryPress(item.name)}
+							activeOpacity={0.8}
 						>
-							<View
-								style={[
-									styles.iconWrapper,
-									selectedCategory === item.name && styles.selectedIconWrapper,
-								]}
-							>
-								{item.icon}
-							</View>
+							<View style={styles.categoryIconModern}>{item.icon}</View>
 							<Text
 								style={[
-									styles.categoryLabel,
+									styles.categoryCardLabelModern,
 									selectedCategory === item.name &&
-										styles.selectedCategoryLabel,
+										styles.selectedCategoryCardLabelModern,
 								]}
 							>
 								{item.name.charAt(0).toUpperCase() + item.name.slice(1)}
 							</Text>
 						</TouchableOpacity>
 					)}
-					scrollEnabled={false}
-					contentContainerStyle={styles.categoriesGrid}
 				/>
 			</View>
 
-			{/* Featured Products Section */}
+			{/* --- MODERN FEATURED SECTION WITH GRID/LIST TOGGLE --- */}
 			<View style={styles.sectionContainer}>
-				<Text style={styles.sectionTitle}>Featured Products</Text>
+				<View style={styles.sectionTitleRow}>
+					<Text style={styles.sectionTitle}>Featured Products</Text>
+					<View style={styles.toggleRow}>
+						<TouchableOpacity
+							onPress={() => setViewMode('grid')}
+							style={[
+								styles.toggleBtn,
+								viewMode === 'grid' && styles.toggleBtnActive,
+							]}
+						>
+							<Ionicons
+								name='grid'
+								size={18}
+								color={viewMode === 'grid' ? '#fff' : '#fff'}
+							/>
+						</TouchableOpacity>
+						<TouchableOpacity
+							onPress={() => setViewMode('list')}
+							style={[
+								styles.toggleBtn,
+								viewMode === 'list' && styles.toggleBtnActive,
+							]}
+						>
+							<Ionicons
+								name='list'
+								size={18}
+								color={viewMode === 'list' ? '#fff' : '#fff'}
+							/>
+						</TouchableOpacity>
+					</View>
+				</View>
 				{featuredProducts.length === 0 ? (
 					<View style={styles.emptyContainer}>
-						<Ionicons name='sad-outline' size={48} color='#ccc' />
+						<Ionicons name='sad-outline' size={48} color='#64748b' />
 						<Text style={styles.emptyText}>No products found</Text>
 					</View>
-				) : (
+				) : viewMode === 'grid' ? (
 					<FlatList
 						data={featuredProducts}
 						numColumns={2}
+						key={'grid'}
 						keyExtractor={(item) => item.id}
+						contentContainerStyle={styles.featuredGrid}
 						renderItem={({ item }) => (
 							<Link
 								href={{ pathname: '/product/[id]', params: { id: item.id } }}
 								asChild
 							>
-								<TouchableOpacity style={styles.productCard}>
-									{item.type === 'new' && (
-										<View style={styles.newBadge}>
-											<Text style={styles.newBadgeText}>NEW</Text>
-										</View>
-									)}
+								<TouchableOpacity
+									style={styles.featuredCardModern}
+									activeOpacity={0.85}
+								>
 									<Image
 										source={{ uri: item.image }}
-										style={styles.productImage}
-										defaultSource={{ uri: 'https://via.placeholder.com/150' }}
+										style={styles.featuredImageModern}
 									/>
-									<View style={styles.productInfo}>
-										<Text style={styles.productName} numberOfLines={1}>
+									<View style={styles.featuredInfoModern}>
+										<Text
+											style={styles.featuredNameModern}
+											numberOfLines={1}
+										>
 											{item.name}
 										</Text>
-										<View style={styles.priceContainer}>
-											<Text style={styles.productPrice}>
+										<View style={styles.featuredPriceRowModern}>
+											<Text style={styles.featuredPriceModern}>
 												৳{item.price.toFixed(2)}
 											</Text>
-											<Text style={styles.productUnit}>/{item.unit}</Text>
+											<Text style={styles.featuredUnitModern}>
+												/{item.unit}
+											</Text>
 										</View>
 									</View>
 								</TouchableOpacity>
 							</Link>
 						)}
-						contentContainerStyle={styles.productsContainer}
+						scrollEnabled={false}
+					/>
+				) : (
+					<FlatList
+						data={featuredProducts}
+						key={'list'}
+						keyExtractor={(item) => item.id}
+						contentContainerStyle={styles.featuredList}
+						renderItem={({ item }) => (
+							<Link
+								href={{ pathname: '/product/[id]', params: { id: item.id } }}
+								asChild
+							>
+								<TouchableOpacity
+									style={styles.featuredListItemModern}
+									activeOpacity={0.85}
+								>
+									<Image
+										source={{ uri: item.image }}
+										style={styles.featuredListImageModern}
+									/>
+									<View style={styles.featuredListInfoModern}>
+										<Text
+											style={styles.featuredNameModern}
+											numberOfLines={1}
+										>
+											{item.name}
+										</Text>
+										<View style={styles.featuredPriceRowModern}>
+											<Text style={styles.featuredPriceModern}>
+												৳{item.price.toFixed(2)}
+											</Text>
+											<Text style={styles.featuredUnitModern}>
+												/{item.unit}
+											</Text>
+										</View>
+									</View>
+								</TouchableOpacity>
+							</Link>
+						)}
 						scrollEnabled={false}
 					/>
 				)}
@@ -368,7 +450,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#f6fcf6',
+		backgroundColor: '#f0f7f0',
 		paddingHorizontal: 16,
 	},
 
@@ -376,83 +458,208 @@ const styles = StyleSheet.create({
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
+		backgroundColor: '#f0f7f0',
 	},
 
 	topSection: {
-		marginBottom: 20,
+		marginBottom: 24,
 		marginTop: 20,
 	},
 
+	// Enhanced header with darkish green theme and crazy effects
 	header: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
-		backgroundColor: '#ffffff',
-		padding: 16,
-		borderRadius: 12,
-		borderWidth: 1,
-		borderColor: '#e5e7eb',
+		backgroundColor: '#1a3d2e',
+		padding: 24,
+		borderRadius: 25,
 		marginBottom: 20,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 8 },
+		shadowOpacity: 0.3,
+		shadowRadius: 20,
+		elevation: 15,
+		borderWidth: 2,
+		borderColor: '#34d399',
+		position: 'relative',
+		overflow: 'hidden',
 	},
 
 	headerLeft: {
 		flex: 1,
 	},
 
+	greetingContainer: {
+		marginBottom: 12,
+	},
+
 	welcomeText: {
 		fontSize: 16,
-		color: '#111827',
+		color: '#86efac',
+		fontWeight: '600',
+		marginBottom: 4,
+		textShadowColor: 'rgba(52, 211, 153, 0.5)',
+		textShadowOffset: { width: 0, height: 1 },
+		textShadowRadius: 3,
+	},
+
+	userNameContainer: {
+		position: 'relative',
+		alignSelf: 'flex-start',
 	},
 
 	userName: {
-		fontWeight: '600',
-		color: '#10b981',
+		fontSize: 24,
+		fontWeight: '900',
+		color: '#ffffff',
+		letterSpacing: 1,
+		textTransform: 'uppercase',
+		textShadowColor: 'rgba(52, 211, 153, 0.8)',
+		textShadowOffset: { width: 0, height: 2 },
+		textShadowRadius: 8,
 	},
 
-	weatherBox: {
+	userNameGlow: {
+		position: 'absolute',
+		top: -2,
+		left: -2,
+		right: -2,
+		bottom: -2,
+		backgroundColor: 'rgba(52, 211, 153, 0.2)',
+		borderRadius: 8,
+		zIndex: -1,
+	},
+
+	// Crazy weather container with animations and effects
+	weatherContainer: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: '#f0fdf4',
-		paddingHorizontal: 12,
-		paddingVertical: 6,
-		borderRadius: 8,
-		marginTop: 6,
+		backgroundColor: 'rgba(16, 185, 129, 0.2)',
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderRadius: 20,
+		marginTop: 8,
+		borderWidth: 1,
+		borderColor: 'rgba(52, 211, 153, 0.5)',
+		position: 'relative',
+		overflow: 'hidden',
 	},
 
-	weatherText: {
-		fontSize: 13,
-		color: '#065f46',
+	weatherIconContainer: {
+		position: 'relative',
+		marginRight: 12,
+		backgroundColor: 'rgba(52, 211, 153, 0.3)',
+		borderRadius: 20,
+		padding: 8,
+	},
+
+	weatherIconGlow: {
+		position: 'absolute',
+		top: -2,
+		left: -2,
+		right: -2,
+		bottom: -2,
+		backgroundColor: 'rgba(52, 211, 153, 0.4)',
+		borderRadius: 22,
+		zIndex: -1,
+	},
+
+	weatherInfo: {
+		flex: 1,
+	},
+
+	weatherTemp: {
+		fontSize: 18,
+		color: '#ffffff',
+		fontWeight: '800',
+		textShadowColor: 'rgba(52, 211, 153, 0.7)',
+		textShadowOffset: { width: 0, height: 1 },
+		textShadowRadius: 4,
+	},
+
+	weatherDesc: {
+		fontSize: 12,
+		color: '#bbf7d0',
+		fontWeight: '600',
+		textTransform: 'capitalize',
+		marginTop: 2,
+	},
+
+	weatherPulse: {
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		right: 0,
+		bottom: 0,
+		backgroundColor: 'rgba(52, 211, 153, 0.1)',
+		borderRadius: 20,
 	},
 
 	profileIconContainer: {
-		paddingLeft: 12,
+		paddingLeft: 16,
 	},
 
+	profileIconWrapper: {
+		position: 'relative',
+		backgroundColor: 'rgba(52, 211, 153, 0.2)',
+		borderRadius: 40,
+		padding: 12,
+		borderWidth: 2,
+		borderColor: 'rgba(52, 211, 153, 0.6)',
+	},
+
+	profileGlow: {
+		position: 'absolute',
+		top: -4,
+		left: -4,
+		right: -4,
+		bottom: -4,
+		backgroundColor: 'rgba(52, 211, 153, 0.3)',
+		borderRadius: 44,
+		zIndex: -1,
+	},
+
+	// Enhanced search section
 	searchSection: {
 		position: 'relative',
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: '#f1f5f9', // soft gray-blue
-		borderRadius: 12,
+		backgroundColor: '#ffffff',
+		borderRadius: 15,
 		borderWidth: 1,
-		borderColor: '#e5e7eb',
-		paddingHorizontal: 14,
-		paddingVertical: 2,
+		borderColor: '#e8f5e8',
+		paddingHorizontal: 16,
+		paddingVertical: 14,
 		marginBottom: 20,
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
+		elevation: 4,
 	},
 
 	searchIcon: {
-		marginRight: 8,
+		marginRight: 12,
+		color: '#4a6b4f',
 	},
 
 	searchInput: {
 		flex: 1,
 		fontSize: 16,
-		color: '#111827',
+		color: '#2d5a3d',
+		fontWeight: '500',
 	},
 
 	sectionContainer: {
-		marginBottom: 24,
+		marginBottom: 28,
+	},
+
+	// Crazy modern section title with glow effects
+	sectionTitleContainer: {
+		position: 'relative',
+		marginBottom: 20,
+		alignSelf: 'flex-start',
 	},
 
 	sectionTitle: {
@@ -462,173 +669,220 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 	},
 
-	categoriesScrollContent: {
-		paddingVertical: 4,
-	},
-
-	categoryButton: {
+	sectionTitleRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		paddingHorizontal: 14,
-		paddingVertical: 10,
-		backgroundColor: '#fff',
-		borderRadius: 12,
-		marginRight: 12,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.06,
-		shadowRadius: 3,
-		elevation: 1,
+		justifyContent: 'space-between',
+		marginBottom: 10,
 	},
 
-	selectedCategoryButton: {
-		backgroundColor: '#4CAF50',
+	toggleRow: {
+		flexDirection: 'row',
+		gap: 8,
 	},
 
-	categoryIconContainer: {
-		marginRight: 8,
+	toggleBtn: {
+		backgroundColor: '#14532d', // dark green
+		borderRadius: 8,
+		padding: 6,
+		marginLeft: 6,
 	},
 
-	categoryText: {
-		fontSize: 14,
-		fontWeight: 'bold',
-		color: '#444',
+	toggleBtnActive: {
+		backgroundColor: '#15803d', // slightly lighter dark green
 	},
 
-	selectedCategoryText: {
-		color: '#fff',
-		fontWeight: '600',
-	},
-
-	productsContainer: {
-		marginBottom: 80,
-	},
-
-	productCard: {
-		flex: 1,
-		margin: 8,
-		backgroundColor: '#ffffff',
-		borderRadius: 16,
+	// Enhanced categories main container with background effects
+	categoriesMainContainer: {
+		position: 'relative',
+		backgroundColor: 'rgba(255, 255, 255, 0.8)',
+		borderRadius: 24,
+		padding: 16,
+		borderWidth: 2,
+		borderColor: 'rgba(52, 211, 153, 0.2)',
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: 6 },
+		shadowOpacity: 0.15,
+		shadowRadius: 12,
+		elevation: 8,
 		overflow: 'hidden',
+	},
+
+	categoriesHorizontalList: {
+		paddingVertical: 4,
+		paddingLeft: 2,
+	},
+
+	// Crazy modern category grid items
+	categoryCardModern: {
+		backgroundColor: 'rgba(236, 253, 245, 0.95)', // very light green
+		borderRadius: 16,
+		alignItems: 'center',
+		marginRight: 14,
+		paddingVertical: 14,
+		paddingHorizontal: 16,
 		borderWidth: 1,
-		borderColor: '#e5e7eb',
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.05,
-		shadowRadius: 4,
+		borderColor: '#bbf7d0', // green border
+		shadowColor: '#22c55e',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
 		elevation: 2,
+		minWidth: 90,
+		minHeight: 90,
+		position: 'relative',
 	},
 
+	selectedCategoryCardModern: {
+		backgroundColor: '#22c55e', // green
+		borderColor: '#15803d', // dark green
+		shadowColor: '#22c55e',
+		shadowOpacity: 0.18,
+	},
 
+	categoryIconModern: {
+		width: 38,
+		height: 38,
+		borderRadius: 19,
+		backgroundColor: '#bbf7d0', // greenish
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginBottom: 8,
+		borderWidth: 1,
+		borderColor: '#4ade80', // green border
+	},
 
-	newBadgeText: {
+	categoryCardLabelModern: {
+		fontSize: 13,
+		color: '#15803d', // dark green
+		fontWeight: '600',
+		textAlign: 'center',
+	},
+
+	selectedCategoryCardLabelModern: {
 		color: '#fff',
-		fontSize: 10,
-		fontWeight: 'bold',
+		fontWeight: '700',
 	},
 
-	productImage: {
+	// Featured Products Section
+	featuredGrid: {
+		paddingVertical: 8,
+		paddingLeft: 2,
+	},
+
+	// Enhanced featured cards
+	featuredCardModern: {
+		backgroundColor: '#f6fcf6', // light green
+		borderRadius: 18,
+		margin: 8,
+		flex: 1,
+		shadowColor: '#22c55e', // green shadow
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 0.10,
+		shadowRadius: 8,
+		elevation: 4,
+		overflow: 'hidden',
+		position: 'relative',
+	},
+
+	featuredImageModern: {
 		width: '100%',
-		height: 140,
+		height: 110,
+		borderTopLeftRadius: 18,
+		borderTopRightRadius: 18,
 		resizeMode: 'cover',
-		backgroundColor: '#f3f4f6',
+		backgroundColor: '#bbf7d0', // greenish
 	},
 
-	productInfo: {
+	featuredInfoModern: {
 		padding: 12,
 	},
 
-	productName: {
+	featuredNameModern: {
 		fontSize: 15,
-		fontWeight: '500',
-		color: '#111827',
+		fontWeight: '700',
+		color: '#14532d', // dark green
 		marginBottom: 6,
 	},
 
-	priceContainer: {
+	featuredPriceRowModern: {
 		flexDirection: 'row',
 		alignItems: 'baseline',
 	},
 
-	productPrice: {
+	featuredPriceModern: {
 		fontSize: 16,
 		fontWeight: '700',
-		color: '#10b981',
+		color: '#15803d', // dark green
 	},
-	
-	productUnit: {
+
+	featuredUnitModern: {
 		fontSize: 13,
-		color: '#6b7280',
+		color: '#15803d', // green
 		marginLeft: 4,
 	},
-	
+
+	featuredList: {
+		paddingVertical: 8,
+		paddingLeft: 2,
+	},
+
+	featuredListItemModern: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#f6fcf6', // light green
+		borderRadius: 16,
+		marginBottom: 14,
+		marginHorizontal: 4,
+		padding: 8,
+		shadowColor: '#22c55e', // green shadow
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 6,
+		elevation: 2,
+	},
+	featuredListImageModern: {
+		width: 70,
+		height: 70,
+		borderRadius: 12,
+		marginRight: 14,
+		backgroundColor: '#bbf7d0', // greenish
+	},
+	featuredListInfoModern: {
+		flex: 1,
+		justifyContent: 'center',
+	},
+
+	// Enhanced new badge
 	newBadge: {
 		position: 'absolute',
-		top: 10,
-		left: 10,
-		backgroundColor: '#10b981',
-		paddingHorizontal: 8,
-		paddingVertical: 2,
-		borderRadius: 4,
+		top: 12,
+		left: 12,
+		backgroundColor: '#14532d', // dark green
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		borderRadius: 8,
 		zIndex: 1,
+		shadowColor: '#14532d', // dark green
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.3,
+		shadowRadius: 4,
+		elevation: 4,
 	},
-	
 
 	emptyContainer: {
 		alignItems: 'center',
-		padding: 32,
+		padding: 40,
+		backgroundColor: '#ffffff',
+		borderRadius: 18,
+		borderWidth: 1,
+		borderColor: '#e8f5e8',
 	},
 
 	emptyText: {
 		fontSize: 16,
-		color: '#888',
-		marginTop: 8,
-	},
-	categoriesGrid: {
-		alignItems: 'center',
-	},
-
-	categoryGridItem: {
-		width: '22%',
-		margin: '2%',
-		backgroundColor: '#fff',
-		borderRadius: 12,
-		alignItems: 'center',
-		paddingVertical: 16,
-		paddingHorizontal: 6,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.05,
-		shadowRadius: 3,
-		elevation: 2,
-	},
-
-	selectedCategoryGridItem: {
-		backgroundColor: '#4CAF50',
-	},
-
-	iconWrapper: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
-		backgroundColor: '#e0f2f1',
-		alignItems: 'center',
-		justifyContent: 'center',
-		marginBottom: 8,
-	},
-
-	selectedIconWrapper: {
-		backgroundColor: '#a5d6a7',
-	},
-
-	categoryLabel: {
-		fontSize: 12,
-		textAlign: 'center',
-		color: '#444',
-	},
-
-	selectedCategoryLabel: {
-		color: '#fff',
-		fontWeight: '600',
+		color: '#4a6b4f',
+		marginTop: 12,
+		fontWeight: '500',
 	},
 });

@@ -20,6 +20,8 @@ import {
 	query,
 	where,
 	getDocs,
+	updateDoc,
+	increment,
 } from 'firebase/firestore';
 import { app } from '../../config/firebase';
 import { useEffect, useState } from 'react';
@@ -62,6 +64,7 @@ type Shop = {
 	image?: string;
 	rating?: number;
 	productsCount?: number;
+	likes?: number;
 };
 
 function ProductDetailScreen() {
@@ -77,6 +80,8 @@ function ProductDetailScreen() {
 		latitude: number;
 		longitude: number;
 	} | null>(null);
+	const [isLiked, setIsLiked] = useState(false);
+	const [likeCount, setLikeCount] = useState(0);
 	const { addToCart } = useCart();
 	const db = getFirestore(app);
 
@@ -137,6 +142,8 @@ function ProductDetailScreen() {
 							productsCount: shopData.productsCount || 0,
 						};
 						setShop(shopInfo);
+						// Initialize likes count from Firestore, defaulting to 0 if not present
+						setLikeCount(typeof shopData.likes === 'number' ? shopData.likes : 0);
 
 						// Calculate distance if both user location and shop location are available
 						const isValidLocationData = isValidLocation(shopData.location);
@@ -204,6 +211,49 @@ function ProductDetailScreen() {
 
 		fetchSimilarProducts();
 	}, [product]);
+
+	const handleLike = async () => {
+		if (!shop) return;
+		
+		try {
+			const shopRef = doc(db, 'shops', shop.id);
+			
+			if (isLiked) {
+				// Unlike: decrement likes
+				await updateDoc(shopRef, {
+					likes: increment(-1)
+				});
+				setLikeCount(prev => Math.max(0, prev - 1));
+				setIsLiked(false);
+				
+				Toast.show({
+					type: 'info',
+					text1: 'Removed Like',
+					text2: `You unliked ${shop.name}`,
+				});
+			} else {
+				// Like: increment likes
+				await updateDoc(shopRef, {
+					likes: increment(1)
+				});
+				setLikeCount(prev => prev + 1);
+				setIsLiked(true);
+				
+				Toast.show({
+					type: 'success',
+					text1: 'Liked!',
+					text2: `You liked ${shop.name}`,
+				});
+			}
+		} catch (error) {
+			console.error('Error updating likes:', error);
+			Toast.show({
+				type: 'error',
+				text1: 'Error',
+				text2: 'Failed to update like status',
+			});
+		}
+	};
 
 	const handleAddToCart = async () => {
 		if (!product) return;
@@ -303,131 +353,158 @@ function ProductDetailScreen() {
 
 	return (
 		<SafeAreaView style={styles.container}>
-			<StatusBar barStyle="light-content" backgroundColor="#4CAF50" />
+			<StatusBar barStyle="light-content" backgroundColor="#2d5a3d" />
 			
-			{/* Header */}
+			{/* Enhanced Header with darkish green theme */}
 			<View style={styles.header}>
-				<TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
+				<TouchableOpacity style={styles.backButton} onPress={() => router.push('/(tabs)/products')}>
 					<Ionicons name="arrow-back" size={24} color="#fff" />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Product Details</Text>
-				<View style={styles.headerRight} />
+				<TouchableOpacity style={styles.likeButton} onPress={handleLike}>
+					<Ionicons 
+						name={isLiked ? "heart" : "heart-outline"} 
+						size={24} 
+						color={isLiked ? "#ff6b6b" : "#fff"} 
+					/>
+					{likeCount > 0 && (
+						<Text style={styles.likeCount}>{likeCount}</Text>
+					)}
+				</TouchableOpacity>
 			</View>
 
-			<ScrollView style={styles.scrollView} showsVerticalScrollIndicator={false}>
-				{/* Product Image */}
+			<ScrollView 
+				style={styles.scrollView} 
+				showsVerticalScrollIndicator={false}
+				contentContainerStyle={{ paddingBottom: 120 }}
+			>
+				{/* Enhanced Product Image with Price Overlay */}
 				<View style={styles.imageContainer}>
 					<Image source={{ uri: product.image }} style={styles.productImage} />
+					<View style={styles.imageOverlay}>
+						<View style={styles.priceTag}>
+							<Text style={styles.priceTagText}>৳{product.price.toFixed(2)}</Text>
+							<Text style={styles.priceTagUnit}>per {product.unit}</Text>
+						</View>
+					</View>
 				</View>
 
-				{/* Product Information */}
+				{/* Enhanced Product Information Card */}
 				<View style={styles.productContainer}>
 					<View style={styles.productHeader}>
 						<Text style={styles.productName}>{product.name}</Text>
-						<View style={styles.priceRow}>
-							<Text style={styles.price}>৳{product.price.toFixed(2)}</Text>
-							<Text style={styles.unit}>per {product.unit}</Text>
-						</View>
+						<Text style={styles.productType}>{product.type || 'Fresh Product'}</Text>
 					</View>
 
 					<Text style={styles.description}>
-						{product.description || 'Fresh and quality product from local farmers.'}
+						{product.description || 'Fresh and quality product from local farmers. Organically grown with care and delivered fresh to your doorstep.'}
 					</Text>
+				</View>
 
-					{/* Shop Information */}
-					{shop && (
-						<View style={styles.shopCard}>
-							<View style={styles.shopHeader}>
-								<View style={styles.shopImageContainer}>
-									{shop.image ? (
-										<Image source={{ uri: shop.image }} style={styles.shopImage} />
-									) : (
-										<View style={styles.shopImagePlaceholder}>
-											<Ionicons name="storefront" size={24} color="#4CAF50" />
-										</View>
-									)}
-								</View>
-								<View style={styles.shopInfo}>
-									<Text style={styles.shopName}>{shop.name}</Text>
-									<Text style={styles.farmerInfo}>Farmer ID: {shop.farmerId}</Text>
-									{shop.rating && shop.rating > 0 && (
-										<View style={styles.ratingContainer}>
-											<Ionicons name="star" size={14} color="#FFB300" />
-											<Text style={styles.ratingText}>{shop.rating.toFixed(1)}</Text>
-										</View>
-									)}
-								</View>
-							</View>
-
-							{/* Shop Details */}
-							<View style={styles.shopDetails}>
-								<View style={styles.shopDetailRow}>
-									<Ionicons name="storefront-outline" size={16} color="#666" />
-									<Text style={styles.shopDetailText}>
-										{shop.productsCount || 0} products available
-									</Text>
-								</View>
-								
-								<View style={styles.shopDetailRow}>
-									<Ionicons name="location-outline" size={16} color="#666" />
-									<Text style={styles.shopDetailText}>
-										{(() => {
-											if (typeof shop.location === 'string') {
-												return shop.location;
-											}
-											
-											if (isValidLocation(shop.location)) {
-												const normalized = normalizeLocation(shop.location);
-												if (normalized) {
-													return `${normalized.latitude.toFixed(4)}, ${normalized.longitude.toFixed(4)}`;
-												}
-												return 'Invalid coordinates';
-											}
-											
-											return 'Location not available';
-										})()}
-									</Text>
-								</View>
-
-								{distance !== null && distance !== undefined && (
-									<View style={styles.distanceRow}>
-										<View style={styles.distanceInfo}>
-											<Ionicons name="navigate" size={16} color="#4CAF50" />
-											<Text style={styles.distanceText}>
-												{formatDistance(distance)} away
-											</Text>
-										</View>
-										<TouchableOpacity 
-											style={styles.directionsButton}
-											onPress={handleGetDirections}
-										>
-											<Ionicons name="navigate-outline" size={16} color="#2196F3" />
-											<Text style={styles.directionsButtonText}>Directions</Text>
-										</TouchableOpacity>
+				{/* Enhanced Shop Information Card */}
+				{shop && (
+					<View style={styles.shopCard}>
+						<View style={styles.shopHeader}>
+							<View style={styles.shopImageContainer}>
+								{shop.image ? (
+									<Image source={{ uri: shop.image }} style={styles.shopImage} />
+								) : (
+									<View style={styles.shopImagePlaceholder}>
+										<Ionicons name="storefront" size={32} color="#2d5a3d" />
 									</View>
 								)}
 							</View>
+							<View style={styles.shopInfo}>
+								<Text style={styles.shopName}>{shop.name}</Text>
+								<Text style={styles.farmerInfo}>Farmer ID: {shop.farmerId}</Text>
+								<View style={styles.shopMetrics}>
+									{shop.rating && shop.rating > 0 && (
+										<View style={styles.ratingContainer}>
+											<Ionicons name="star" size={16} color="#FFB300" />
+											<Text style={styles.ratingText}>{shop.rating.toFixed(1)}</Text>
+										</View>
+									)}
+									{likeCount > 0 && (
+										<View style={styles.likesContainer}>
+											<Ionicons name="heart" size={16} color="#e91e63" />
+											<Text style={styles.likesText}>{likeCount}</Text>
+										</View>
+									)}
+								</View>
+							</View>
 						</View>
-					)}
 
-					{/* Similar Products */}
-					{similarProducts.length > 0 && (
-						<View style={styles.similarSection}>
-							<Text style={styles.sectionTitle}>You might also like</Text>
-							<FlatList
-								data={similarProducts}
-								horizontal
-								showsHorizontalScrollIndicator={false}
-								renderItem={renderSimilarProduct}
-								keyExtractor={(item) => item.id}
-								contentContainerStyle={styles.similarList}
-							/>
+						{/* Enhanced Shop Details */}
+						<View style={styles.shopDetails}>
+							<View style={styles.shopDetailRow}>
+								<Ionicons name="storefront-outline" size={20} color="#2d5a3d" />
+								<Text style={styles.shopDetailText}>
+									{shop.productsCount || 0} products available
+								</Text>
+							</View>
+							
+							<View style={styles.shopDetailRow}>
+								<Ionicons name="location-outline" size={20} color="#2d5a3d" />
+								<Text style={styles.shopDetailText}>
+									{(() => {
+										if (typeof shop.location === 'string') {
+											return shop.location;
+										}
+										
+										if (isValidLocation(shop.location)) {
+											const normalized = normalizeLocation(shop.location);
+											if (normalized) {
+												return `${normalized.latitude.toFixed(4)}, ${normalized.longitude.toFixed(4)}`;
+											}
+											return 'Invalid coordinates';
+										}
+										
+										return 'Location not available';
+									})()}
+								</Text>
+							</View>
+
+							{distance !== null && distance !== undefined && (
+								<View style={styles.distanceRow}>
+									<View style={styles.distanceInfo}>
+										<Ionicons name="navigate" size={20} color="#2d5a3d" />
+										<Text style={styles.distanceText}>
+											{formatDistance(distance)} away
+										</Text>
+									</View>
+									<TouchableOpacity 
+										style={styles.directionsButton}
+										onPress={handleGetDirections}
+									>
+										<Ionicons name="navigate-outline" size={16} color="#fff" />
+										<Text style={styles.directionsButtonText}>Get Directions</Text>
+									</TouchableOpacity>
+								</View>
+							)}
 						</View>
-					)}
-				</View>
+					</View>
+				)}
+
+				{/* Enhanced Similar Products Section */}
+				{similarProducts.length > 0 && (
+					<View style={styles.similarSection}>
+						<Text style={styles.sectionTitle}>More from this shop</Text>
+						<FlatList
+							data={similarProducts}
+							horizontal
+							showsHorizontalScrollIndicator={false}
+							renderItem={renderSimilarProduct}
+							keyExtractor={(item) => item.id}
+							contentContainerStyle={styles.similarList}
+						/>
+					</View>
+				)}
+				
+				{/* Bottom padding to prevent overlap with sticky button */}
+				<View style={styles.bottomPadding} />
 			</ScrollView>
 
-			{/* Add to Cart Button */}
+			{/* Enhanced Sticky Add to Cart Button */}
 			<View style={styles.bottomContainer}>
 				<TouchableOpacity
 					style={[styles.addToCartButton, addingToCart && styles.addToCartButtonDisabled]}
@@ -438,7 +515,7 @@ function ProductDetailScreen() {
 						<ActivityIndicator color="#fff" size="small" />
 					) : (
 						<>
-							<Ionicons name="cart" size={20} color="#fff" />
+							<Ionicons name="cart" size={22} color="#fff" />
 							<Text style={styles.addToCartText}>Add to Cart</Text>
 						</>
 					)}
@@ -451,144 +528,277 @@ function ProductDetailScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#f8f9fa',
+		backgroundColor: '#f5f7f6',
 	},
 	loadingContainer: {
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
-		backgroundColor: '#fff',
+		backgroundColor: '#f5f7f6',
 	},
 	loadingText: {
 		fontSize: 16,
-		color: '#666',
+		color: '#4a6b4f',
 		marginTop: 10,
+		fontWeight: '500',
 	},
 	errorText: {
 		fontSize: 18,
-		color: '#ff3b30',
+		color: '#d32f2f',
 		textAlign: 'center',
 		marginTop: 20,
+		fontWeight: '500',
 	},
+	// Modern darkish green header
+	header: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		backgroundColor: '#2d5a3d',
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+		paddingTop: 48,
+		elevation: 8,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 0.15,
+		shadowRadius: 6,
+	},
+	backButton: {
+		padding: 10,
+		borderRadius: 24,
+		backgroundColor: 'rgba(255,255,255,0.15)',
+	},
+	headerTitle: {
+		fontSize: 18,
+		fontWeight: '700',
+		color: '#fff',
+		letterSpacing: 0.5,
+	},
+	likeButton: {
+		padding: 10,
+		borderRadius: 24,
+		backgroundColor: 'rgba(255,255,255,0.15)',
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	likeCount: {
+		color: '#fff',
+		marginLeft: 4,
+		fontSize: 14,
+		fontWeight: '600',
+	},
+	scrollView: {
+		flex: 1,
+	},
+	scrollContent: {
+		paddingBottom: 100,
+	},
+	// Enhanced image container with overlay
 	imageContainer: {
 		width: '100%',
 		height: 300,
-		overflow: 'hidden',
-		borderTopLeftRadius: 12,
-		borderTopRightRadius: 12,
+		position: 'relative',
+		backgroundColor: '#e8f5e8',
 	},
 	productImage: {
 		width: '100%',
 		height: '100%',
 		resizeMode: 'cover',
 	},
+	imageOverlay: {
+		position: 'absolute',
+		bottom: 16,
+		right: 16,
+	},
+	priceTag: {
+		backgroundColor: 'rgba(45, 90, 61, 0.95)',
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderRadius: 20,
+		alignItems: 'center',
+		minWidth: 100,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.25,
+		shadowRadius: 4,
+		elevation: 4,
+	},
+	priceTagText: {
+		color: '#fff',
+		fontSize: 18,
+		fontWeight: '700',
+	},
+	priceTagUnit: {
+		color: '#a5d6a7',
+		fontSize: 12,
+		fontWeight: '500',
+		marginTop: 2,
+	},
+	// Enhanced product info section
 	productContainer: {
-		padding: 16,
+		backgroundColor: '#fff',
+		margin: 16,
+		borderRadius: 16,
+		padding: 20,
+		elevation: 3,
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
 	},
 	productHeader: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-		marginBottom: 12,
+		marginBottom: 16,
 	},
 	productName: {
-		fontSize: 22,
-		fontWeight: 'bold',
-		color: '#333',
-		flex: 1,
-	},
-	priceRow: {
-		flexDirection: 'row',
-		alignItems: 'flex-end',
-	},
-	price: {
-		fontSize: 20,
+		fontSize: 24,
 		fontWeight: '700',
-		color: '#2e86de',
+		color: '#2d5a3d',
+		marginBottom: 6,
+		lineHeight: 30,
 	},
-	unit: {
-		fontSize: 16,
-		color: '#666',
-		marginLeft: 4,
+	productType: {
+		fontSize: 14,
+		color: '#6b8e70',
+		fontWeight: '500',
+		backgroundColor: '#e8f5e8',
+		paddingHorizontal: 12,
+		paddingVertical: 4,
+		borderRadius: 12,
+		alignSelf: 'flex-start',
 	},
 	description: {
 		fontSize: 16,
-		lineHeight: 24,
-		color: '#555',
-		marginTop: 12,
-		marginBottom: 16,
+		lineHeight: 26,
+		color: '#4a6b4f',
+		marginBottom: 20,
+		fontWeight: '400',
 	},
 	sectionTitle: {
 		fontSize: 18,
-		fontWeight: 'bold',
-		marginBottom: 12,
-		color: '#4CAF50',
+		fontWeight: '700',
+		marginBottom: 16,
+		marginTop: 8,
+		color: '#2d5a3d',
+		paddingHorizontal: 16,
 	},
+	// Enhanced shop card
 	shopCard: {
-		backgroundColor: '#f8f9fa',
-		borderRadius: 12,
-		padding: 16,
-		marginBottom: 24,
-		elevation: 2,
+		backgroundColor: '#fff',
+		borderRadius: 16,
+		margin: 16,
+		padding: 20,
+		elevation: 3,
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		borderWidth: 1,
+		borderColor: '#e8f5e8',
 	},
 	shopHeader: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginBottom: 12,
+		marginBottom: 16,
 	},
 	shopImageContainer: {
-		width: 60,
-		height: 60,
-		borderRadius: 30,
+		width: 70,
+		height: 70,
+		borderRadius: 35,
 		overflow: 'hidden',
-		marginRight: 12,
+		marginRight: 16,
+		borderWidth: 3,
+		borderColor: '#e8f5e8',
 	},
 	shopImage: {
 		width: '100%',
 		height: '100%',
 		resizeMode: 'cover',
 	},
+	shopImagePlaceholder: {
+		width: '100%',
+		height: '100%',
+		backgroundColor: '#e8f5e8',
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
 	shopInfo: {
 		flex: 1,
 	},
 	shopName: {
-		fontSize: 18,
-		fontWeight: 'bold',
-		color: '#333',
+		fontSize: 20,
+		fontWeight: '700',
+		color: '#2d5a3d',
+		marginBottom: 4,
 	},
 	farmerInfo: {
 		fontSize: 14,
-		color: '#666',
-		marginTop: 4,
+		color: '#6b8e70',
+		marginBottom: 8,
+		fontWeight: '500',
+	},
+	shopMetrics: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 16,
 	},
 	ratingContainer: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginTop: 4,
+		backgroundColor: '#fff3e0',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
 	},
 	ratingText: {
-		marginLeft: 6,
-		color: '#666',
+		marginLeft: 4,
+		color: '#f57c00',
+		fontWeight: '600',
+		fontSize: 14,
+	},
+	likesContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#ffebee',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
+	},
+	likesText: {
+		marginLeft: 4,
+		color: '#e91e63',
+		fontWeight: '600',
+		fontSize: 14,
 	},
 	shopDetails: {
-		marginTop: 8,
+		marginTop: 12,
+		paddingTop: 16,
+		borderTopWidth: 1,
+		borderTopColor: '#e8f5e8',
 	},
 	shopDetailRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginBottom: 8,
+		marginBottom: 12,
+		backgroundColor: '#f8fcf9',
+		padding: 12,
+		borderRadius: 12,
 	},
 	shopDetailText: {
 		fontSize: 14,
-		color: '#555',
-		marginLeft: 8,
+		color: '#4a6b4f',
+		marginLeft: 12,
+		fontWeight: '500',
+		flex: 1,
 	},
 	distanceRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginTop: 8,
-		marginBottom: 4,
 		justifyContent: 'space-between',
+		backgroundColor: '#f0f8f0',
+		padding: 12,
+		borderRadius: 12,
+		marginTop: 8,
 	},
 	distanceInfo: {
 		flexDirection: 'row',
@@ -596,24 +806,69 @@ const styles = StyleSheet.create({
 	},
 	distanceText: {
 		fontSize: 14,
-		color: '#4CAF50',
-		marginLeft: 4,
-		fontWeight: '600',
+		color: '#2d5a3d',
+		marginLeft: 8,
+		fontWeight: '700',
 	},
 	directionsButton: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		paddingHorizontal: 8,
-		paddingVertical: 4,
-		backgroundColor: '#e3f2fd',
-		borderRadius: 12,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		backgroundColor: '#2d5a3d',
+		borderRadius: 16,
 	},
 	directionsButtonText: {
 		fontSize: 12,
-		color: '#2196F3',
-		marginLeft: 4,
-		fontWeight: '500',
+		color: '#fff',
+		marginLeft: 6,
+		fontWeight: '600',
 	},
+	// Enhanced similar products section
+	similarSection: {
+		marginTop: 8,
+		paddingBottom: 120, // Increased padding to prevent overlap with sticky button
+	},
+	similarList: {
+		paddingHorizontal: 16,
+		paddingBottom: 20, // Additional padding for the horizontal list
+	},
+	carouselItem: {
+		width: 160,
+		backgroundColor: '#fff',
+		borderRadius: 16,
+		padding: 16,
+		marginRight: 12,
+		elevation: 3,
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		borderWidth: 1,
+		borderColor: '#e8f5e8',
+	},
+	carouselImage: {
+		width: 128,
+		height: 120,
+		borderRadius: 12,
+		marginBottom: 12,
+		backgroundColor: '#e8f5e8',
+	},
+	carouselName: {
+		fontSize: 14,
+		fontWeight: '600',
+		color: '#2d5a3d',
+		textAlign: 'center',
+		marginBottom: 6,
+		lineHeight: 18,
+	},
+	carouselPrice: {
+		fontSize: 16,
+		color: '#4a6b4f',
+		fontWeight: '700',
+		textAlign: 'center',
+	},
+	// Enhanced sticky bottom container
 	bottomContainer: {
 		position: 'absolute',
 		bottom: 0,
@@ -621,109 +876,43 @@ const styles = StyleSheet.create({
 		right: 0,
 		backgroundColor: '#fff',
 		paddingHorizontal: 20,
-		paddingTop: 16,
-		paddingBottom: 34,
+		paddingTop: 20,
+		paddingBottom: 40,
 		borderTopWidth: 1,
-		borderTopColor: '#e9ecef',
+		borderTopColor: '#e8f5e8',
+		elevation: 8,
+		shadowColor: '#2d5a3d',
+		shadowOffset: { width: 0, height: -4 },
+		shadowOpacity: 0.15,
+		shadowRadius: 8,
 	},
 	addToCartButton: {
-		backgroundColor: '#4CAF50',
-		borderRadius: 16,
-		paddingVertical: 16,
+		backgroundColor: '#2d5a3d',
+		borderRadius: 20,
+		paddingVertical: 18,
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'center',
-		shadowColor: '#4CAF50',
+		shadowColor: '#2d5a3d',
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.3,
 		shadowRadius: 8,
-		elevation: 4,
-	},
-	buttonContent: {
-		alignItems: 'center',
-	},
-	iconWithText: {
-		flexDirection: 'row',
-		alignItems: 'center',
+		elevation: 6,
 	},
 	addToCartText: {
 		color: '#fff',
-		fontWeight: 'bold',
+		fontWeight: '700',
 		fontSize: 16,
 		marginLeft: 8,
-	},
-	similarSection: {
-		marginTop: 16,
-	},
-	carouselItem: {
-		width: 160,
-		backgroundColor: '#fff',
-		borderRadius: 8,
-		padding: 12,
-		marginRight: 12,
-		alignItems: 'center',
-		elevation: 2,
-	},
-	carouselImage: {
-		width: 120,
-		height: 120,
-		borderRadius: 8,
-		marginBottom: 8,
-	},
-	carouselName: {
-		fontSize: 14,
-		fontWeight: 'bold',
-		color: '#333',
-		textAlign: 'center',
-	},
-	carouselPrice: {
-		fontSize: 14,
-		color: '#2e86de',
-	},
-	// New modern styles
-	header: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		backgroundColor: '#4CAF50',
-		paddingHorizontal: 16,
-		paddingVertical: 12,
-		paddingTop: 44,
-		elevation: 4,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.1,
-		shadowRadius: 4,
-	},
-	backButton: {
-		padding: 8,
-		borderRadius: 20,
-		backgroundColor: 'rgba(255,255,255,0.1)',
-	},
-	headerTitle: {
-		fontSize: 18,
-		fontWeight: '600',
-		color: '#fff',
-	},
-	headerRight: {
-		width: 40,
-	},
-	scrollView: {
-		flex: 1,
-	},
-	shopImagePlaceholder: {
-		width: 60,
-		height: 60,
-		borderRadius: 30,
-		backgroundColor: '#e8f5e8',
-		justifyContent: 'center',
-		alignItems: 'center',
-	},
-	similarList: {
-		paddingRight: 20,
+		letterSpacing: 0.5,
 	},
 	addToCartButtonDisabled: {
-		backgroundColor: '#a5d6a7',
+		backgroundColor: '#9ccc9c',
+		shadowOpacity: 0.1,
+		elevation: 2,
+	},
+	bottomPadding: {
+		height: 100, // Increased height to ensure no overlap with sticky button
 	},
 });
 

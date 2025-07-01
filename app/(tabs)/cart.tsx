@@ -450,7 +450,39 @@ export default function CartScreen() {
 										</TouchableOpacity>
 										<Text style={styles.quantity}>{item.quantity}</Text>
 										<TouchableOpacity
-											onPress={() => updateQuantity(item.id, item.quantity + 1)}
+											onPress={() => {
+												// Check product stock before increasing quantity
+												const checkStock = async () => {
+													try {
+														const productRef = doc(db, 'products', item.id);
+														const productSnap = await getDoc(productRef);
+														
+														if (productSnap.exists()) {
+															const productData = productSnap.data();
+															const stock = productData.stock || 0;
+															
+															if (item.quantity < stock) {
+																updateQuantity(item.id, item.quantity + 1);
+															} else {
+																Toast.show({
+																	type: 'error',
+																	text1: 'Stock Limit Reached',
+																	text2: `Only ${stock} units available`,
+																});
+															}
+														}
+													} catch (error) {
+														console.error('Error checking stock:', error);
+														Toast.show({
+															type: 'error',
+															text1: 'Error',
+															text2: 'Could not update quantity',
+														});
+													}
+												};
+												
+												checkStock();
+											}}
 										>
 											<Ionicons
 												name='add-circle-outline'

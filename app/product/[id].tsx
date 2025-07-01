@@ -22,6 +22,8 @@ import {
 	getDocs,
 	updateDoc,
 	increment,
+	setDoc,
+	deleteDoc,
 } from 'firebase/firestore';
 import { app } from '../../config/firebase';
 import { useEffect, useState } from 'react';
@@ -52,6 +54,10 @@ type Product = {
 	unit: string;
 	description?: string;
 	type?: string;
+	stock?: number;
+	farmerId?: string;
+	likes?: number;
+	isLikedByUser?: boolean;
 };
 
 type Shop = {
@@ -76,6 +82,9 @@ function ProductDetailScreen() {
 	const [loading, setLoading] = useState(true);
 	const [addingToCart, setAddingToCart] = useState(false);
 	const [similarProducts, setSimilarProducts] = useState<Product[]>([]);
+	const [shopProducts, setShopProducts] = useState<Product[]>([]);
+	const [totalStock, setTotalStock] = useState(0);
+	const [isOutOfStock, setIsOutOfStock] = useState(false);
 	const [distance, setDistance] = useState<number | null>(null);
 	const [userLocation, setUserLocation] = useState<{
 		latitude: number;
@@ -83,6 +92,8 @@ function ProductDetailScreen() {
 	} | null>(null);
 	const [isLiked, setIsLiked] = useState(false);
 	const [likeCount, setLikeCount] = useState(0);
+	const [productLikes, setProductLikes] = useState(0);
+	const [isProductLiked, setIsProductLiked] = useState(false);
 	const { addToCart } = useCart();
 	const db = getFirestore(app);
 	const {user} = useAuth();
@@ -125,7 +136,23 @@ function ProductDetailScreen() {
 					unit: productData.unit || '',
 					description: productData.description,
 					type: productData.type,
+					stock: productData.stock || 0,
+					farmerId: productData.farmerId || '',
+					likes: productData.likes || 0,
 				};
+				
+				// Set product likes count
+				setProductLikes(currentProduct.likes || 0);
+				
+				// Check if product is liked by the current user
+				if (user && user.id) {
+					const userLikesRef = doc(db, 'users', user.id, 'likedProducts', currentProduct.id);
+					const userLikesSnap = await getDoc(userLikesRef);
+					setIsProductLiked(userLikesSnap.exists());
+				}
+				
+				// Check if product is out of stock (less than 5 units)
+				setIsOutOfStock(currentProduct.stock !== undefined && currentProduct.stock < 5);
 				setProduct(currentProduct);
 
 				if (currentProduct.shopId) {
@@ -144,8 +171,45 @@ function ProductDetailScreen() {
 							stock: shopData.stock || 0,
 						};
 						setShop(shopInfo);
+						
+						// Fetch all products with the same farmerId to get total stock
+						const productsRef = collection(db, 'products');
+						const productsQuery = query(productsRef, where('farmerId', '==', shopData.farmerId));
+						const productsSnap = await getDocs(productsQuery);
+						
+						let productsStock: Product[] = [];
+						let totalStockCount = 0;
+						
+						productsSnap.forEach((doc) => {
+							const data = doc.data();
+							const stock = data.stock || 0;
+							totalStockCount += stock;
+							
+							productsStock.push({
+								id: doc.id,
+								name: data.name || 'No Name',
+								price: data.price || 0,
+								image: data.image || 'https://via.placeholder.com/150',
+								shopId: data.shopId || '',
+								unit: data.unit || '',
+								stock: stock,
+								type: data.type || '',
+								farmerId: data.farmerId || '',
+							});
+						});
+						
+						setShopProducts(productsStock);
+						setTotalStock(totalStockCount);
+						
 						// Initialize likes count from Firestore, defaulting to 0 if not present
 						setLikeCount(typeof shopData.likes === 'number' ? shopData.likes : 0);
+						
+						// Check if shop is liked by the current user
+						if (user && user.id) {
+							const userShopLikesRef = doc(db, 'users', user.id, 'likedShops', shopInfo.id);
+							const userShopLikesSnap = await getDoc(userShopLikesRef);
+							setIsLiked(userShopLikesSnap.exists());
+						}
 
 						// Calculate distance if both user location and shop location are available
 						const isValidLocationData = isValidLocation(shopData.location);
@@ -202,6 +266,7 @@ function ProductDetailScreen() {
 							image: data.image || 'https://via.placeholder.com/150',
 							shopId: data.shopId,
 							unit: data.unit,
+							likes: data.likes || 0,
 						};
 					});
 
@@ -214,17 +279,26 @@ function ProductDetailScreen() {
 		fetchSimilarProducts();
 	}, [product]);
 
-	const handleLike = async () => {
+	const handleShopLike = async () => {
 		if (!shop) return;
 		
 		try {
 			const shopRef = doc(db, 'shops', shop.id);
+			
+			// Reference to track user likes
+			const userLikeRef = doc(db, 'users', user?.id || 'anonymous', 'likedShops', shop.id);
 			
 			if (isLiked) {
 				// Unlike: decrement likes
 				await updateDoc(shopRef, {
 					likes: increment(-1)
 				});
+				
+				// Remove from user's liked shops
+				if (user) {
+					await deleteDoc(userLikeRef);
+				}
+				
 				setLikeCount(prev => Math.max(0, prev - 1));
 				setIsLiked(false);
 				
@@ -238,6 +312,16 @@ function ProductDetailScreen() {
 				await updateDoc(shopRef, {
 					likes: increment(1)
 				});
+				
+				// Add to user's liked shops
+				if (user) {
+					await setDoc(userLikeRef, {
+						shopId: shop.id,
+						shopName: shop.name,
+						timestamp: new Date()
+					});
+				}
+				
 				setLikeCount(prev => prev + 1);
 				setIsLiked(true);
 				
@@ -248,11 +332,73 @@ function ProductDetailScreen() {
 				});
 			}
 		} catch (error) {
-			console.error('Error updating likes:', error);
+			console.error('Error updating shop likes:', error);
 			Toast.show({
 				type: 'error',
 				text1: 'Error',
-				text2: 'Failed to update like status',
+				text2: 'Failed to update shop like status',
+			});
+		}
+	};
+	
+	const handleProductLike = async () => {
+		if (!product) return;
+		
+		try {
+			const productRef = doc(db, 'products', product.id);
+			
+			// Reference to track user likes
+			const userLikeRef = doc(db, 'users', user?.id || 'anonymous', 'likedProducts', product.id);
+			
+			if (isProductLiked) {
+				// Unlike: decrement likes
+				await updateDoc(productRef, {
+					likes: increment(-1)
+				});
+				
+				// Remove from user's liked products
+				if (user) {
+					await deleteDoc(userLikeRef);
+				}
+				
+				setProductLikes(prev => Math.max(0, prev - 1));
+				setIsProductLiked(false);
+				
+				Toast.show({
+					type: 'info',
+					text1: 'Removed Like',
+					text2: `You unliked ${product.name}`,
+				});
+			} else {
+				// Like: increment likes
+				await updateDoc(productRef, {
+					likes: increment(1)
+				});
+				
+				// Add to user's liked products
+				if (user) {
+					await setDoc(userLikeRef, {
+						productId: product.id,
+						productName: product.name,
+						timestamp: new Date()
+					});
+				}
+				
+				setProductLikes(prev => prev + 1);
+				setIsProductLiked(true);
+				
+				Toast.show({
+					type: 'success',
+					text1: 'Liked!',
+					text2: `You liked ${product.name}`,
+				});
+			}
+		} catch (error) {
+			console.error('Error updating product likes:', error);
+			Toast.show({
+				type: 'error',
+				text1: 'Error',
+				text2: 'Failed to update product like status',
 			});
 		}
 	};
@@ -334,7 +480,15 @@ function ProductDetailScreen() {
 		>
 			<Image source={{ uri: item.image }} style={styles.carouselImage} />
 			<Text style={styles.carouselName} numberOfLines={2}>{item.name}</Text>
-			<Text style={styles.carouselPrice}>৳{item.price.toFixed(2)}</Text>
+			<View style={styles.carouselFooter}>
+				<Text style={styles.carouselPrice}>৳{item.price.toFixed(2)}</Text>
+				{item.likes !== undefined && item.likes > 0 && (
+					<View style={styles.carouselLikes}>
+						<Ionicons name="heart" size={12} color="#e91e63" />
+						<Text style={styles.carouselLikesText}>{item.likes}</Text>
+					</View>
+				)}
+			</View>
 		</TouchableOpacity>
 	);
 
@@ -365,7 +519,7 @@ function ProductDetailScreen() {
 					<Ionicons name="arrow-back" size={24} color="#fff" />
 				</TouchableOpacity>
 				<Text style={styles.headerTitle}>Product Details</Text>
-				<TouchableOpacity style={styles.likeButton} onPress={handleLike}>
+				<TouchableOpacity style={styles.likeButton} onPress={handleShopLike}>
 					<Ionicons 
 						name={isLiked ? "heart" : "heart-outline"} 
 						size={24} 
@@ -397,7 +551,22 @@ function ProductDetailScreen() {
 				<View style={styles.productContainer}>
 					<View style={styles.productHeader}>
 						<Text style={styles.productName}>{product.name}</Text>
-						<Text style={styles.productType}>{product.type || 'Fresh Product'}</Text>
+						<View style={styles.productTypeRow}>
+							<Text style={styles.productType}>{product.type || 'Fresh Product'}</Text>
+							<TouchableOpacity 
+								style={styles.productLikeButton} 
+								onPress={handleProductLike}
+							>
+								<Ionicons 
+									name={isProductLiked ? "heart" : "heart-outline"} 
+									size={20} 
+									color={isProductLiked ? "#e91e63" : "#6b8e70"} 
+								/>
+								{productLikes > 0 && (
+									<Text style={styles.productLikeCount}>{productLikes}</Text>
+								)}
+							</TouchableOpacity>
+						</View>
 					</View>
 
 					<Text style={styles.description}>
@@ -441,11 +610,20 @@ function ProductDetailScreen() {
 						{/* Enhanced Shop Details */}
 						<View style={styles.shopDetails}>
 							<View style={styles.shopDetailRow}>
-								<Ionicons name="storefront-outline" size={20} color="#2d5a3d" />
+								{/* <Ionicons name="storefront-outline" size={20} color="#2d5a3d" />
 								<Text style={styles.shopDetailText}>
-									{shop.stock || 0} products available
-								</Text>
+									{totalStock} total items in stock
+								</Text> */}
 							</View>
+							
+							{product && product.stock !== undefined && (
+								<View style={styles.shopDetailRow}>
+									<Ionicons name="cube-outline" size={20} color="#2d5a3d" />
+									<Text style={styles.shopDetailText}>
+										{product.name}: {product.stock} {product.unit} available
+									</Text>
+								</View>
+							)}
 							
 							<View style={styles.shopDetailRow}>
 								<Ionicons name="location-outline" size={20} color="#2d5a3d" />
@@ -489,6 +667,25 @@ function ProductDetailScreen() {
 					</View>
 				)}
 
+				{/* Shop Products Stock Section */}
+				{shopProducts.length > 1 && (
+					<View style={styles.shopCard}>
+						<Text style={styles.sectionTitle}>Available Stock</Text>
+						
+						{shopProducts.map((item) => (
+							<View key={item.id} style={styles.stockItem}>
+								<View style={styles.stockItemLeft}>
+									<Text style={styles.stockItemName}>{item.name}</Text>
+									<Text style={styles.stockItemUnit}>({item.unit})</Text>
+								</View>
+								<View style={styles.stockItemRight}>
+									<Text style={styles.stockItemCount}>{item.stock}</Text>
+								</View>
+							</View>
+						))}
+					</View>
+				)}
+
 				{/* Enhanced Similar Products Section */}
 				{similarProducts.length > 0 && (
 					<View style={styles.similarSection}>
@@ -510,20 +707,29 @@ function ProductDetailScreen() {
 
 			{/* Enhanced Sticky Add to Cart Button */}
 			<View style={styles.bottomContainer}>
-				<TouchableOpacity
-					style={[styles.addToCartButton, addingToCart && styles.addToCartButtonDisabled]}
-					onPress={handleAddToCart}
-					disabled={addingToCart}
-				>
-					{addingToCart ? (
-						<ActivityIndicator color="#fff" size="small" />
-					) : (
-						<>
-							<Ionicons name="cart" size={22} color="#fff" />
-							<Text style={styles.addToCartText}>Add to Cart</Text>
-						</>
-					)}
-				</TouchableOpacity>
+				{isOutOfStock ? (
+					<View style={styles.outOfStockContainer}>
+						<Ionicons name="alert-circle" size={22} color="#e53935" />
+						<Text style={styles.outOfStockText}>
+							Out of stock! We have other products available.
+						</Text>
+					</View>
+				) : (
+					<TouchableOpacity
+						style={[styles.addToCartButton, addingToCart && styles.addToCartButtonDisabled]}
+						onPress={handleAddToCart}
+						disabled={addingToCart}
+					>
+						{addingToCart ? (
+							<ActivityIndicator color="#fff" size="small" />
+						) : (
+							<>
+								<Ionicons name="cart" size={22} color="#fff" />
+								<Text style={styles.addToCartText}>Add to Cart</Text>
+							</>
+						)}
+					</TouchableOpacity>
+				)}
 			</View>
 		</SafeAreaView>
 	);
@@ -661,6 +867,11 @@ const styles = StyleSheet.create({
 		marginBottom: 6,
 		lineHeight: 30,
 	},
+	productTypeRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+	},
 	productType: {
 		fontSize: 14,
 		color: '#6b8e70',
@@ -670,6 +881,22 @@ const styles = StyleSheet.create({
 		paddingVertical: 4,
 		borderRadius: 12,
 		alignSelf: 'flex-start',
+	},
+	productLikeButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#f8f9fa',
+		paddingHorizontal: 10,
+		paddingVertical: 5,
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: '#e0e0e0',
+	},
+	productLikeCount: {
+		marginLeft: 4,
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#e91e63',
 	},
 	description: {
 		fontSize: 16,
@@ -866,11 +1093,29 @@ const styles = StyleSheet.create({
 		marginBottom: 6,
 		lineHeight: 18,
 	},
+	carouselFooter: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+	},
 	carouselPrice: {
 		fontSize: 16,
 		color: '#4a6b4f',
 		fontWeight: '700',
-		textAlign: 'center',
+	},
+	carouselLikes: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#ffebee',
+		paddingHorizontal: 6,
+		paddingVertical: 2,
+		borderRadius: 8,
+	},
+	carouselLikesText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#e91e63',
+		marginLeft: 2,
 	},
 	// Enhanced sticky bottom container
 	bottomContainer: {
@@ -917,6 +1162,63 @@ const styles = StyleSheet.create({
 	},
 	bottomPadding: {
 		height: 100, // Increased height to ensure no overlap with sticky button
+	},
+	// Stock item styles
+	stockItem: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		backgroundColor: '#f8fcf9',
+		marginBottom: 8,
+		borderRadius: 12,
+		borderLeftWidth: 3,
+		borderLeftColor: '#2d5a3d',
+	},
+	stockItemLeft: {
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	stockItemName: {
+		fontSize: 16,
+		fontWeight: '600',
+		color: '#2d5a3d',
+		marginRight: 6,
+	},
+	stockItemUnit: {
+		fontSize: 12,
+		color: '#6b8e70',
+		fontWeight: '500',
+	},
+	stockItemRight: {
+		backgroundColor: '#e8f5e8',
+		paddingHorizontal: 12,
+		paddingVertical: 4,
+		borderRadius: 10,
+	},
+	stockItemCount: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#2d5a3d',
+	},
+	// Out of stock styles
+	outOfStockContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: '#ffebee',
+		paddingVertical: 15,
+		paddingHorizontal: 20,
+		borderRadius: 20,
+		borderWidth: 1,
+		borderColor: '#ffcdd2',
+	},
+	outOfStockText: {
+		marginLeft: 8,
+		fontSize: 16,
+		fontWeight: '600',
+		color: '#e53935',
 	},
 });
 

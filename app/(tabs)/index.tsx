@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
 	View,
 	Text,
@@ -9,6 +9,10 @@ import {
 	ActivityIndicator,
 	TextInput,
 	ScrollView,
+	useColorScheme,
+	RefreshControl,
+	Platform,
+	Dimensions,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -19,7 +23,14 @@ import {
 	MaterialIcons,
 	FontAwesome,
 	MaterialCommunityIcons,
+	AntDesign,
 } from '@expo/vector-icons';
+import { Colors } from '../../constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { width } = Dimensions.get('window');
+const CARD_WIDTH = width * 0.42;
+const CARD_HEIGHT = CARD_WIDTH * 1.35;
 
 type Product = {
 	id: string;
@@ -30,6 +41,8 @@ type Product = {
 	unit: string;
 	type: string;
 	likes?: number;
+	stock?: number;
+	farmerId?: string;
 };
 
 type WeatherData = {
@@ -51,6 +64,7 @@ type WeatherData = {
 type Category = {
 	name: string;
 	icon: JSX.Element;
+	color: string;
 };
 
 export default function HomeScreen() {
@@ -58,6 +72,7 @@ export default function HomeScreen() {
 	const [products, setProducts] = useState<Product[]>([]);
 	const [filteredProducts, setFilteredProducts] = useState<Product[]>([]);
 	const [loading, setLoading] = useState(true);
+	const [refreshing, setRefreshing] = useState(false);
 	const [weather, setWeather] = useState<WeatherData | null>(null);
 	const [weatherLoading, setWeatherLoading] = useState(true);
 	const [searchQuery, setSearchQuery] = useState('');
@@ -65,27 +80,39 @@ export default function HomeScreen() {
 	const [categories, setCategories] = useState<Category[]>([]);
 	const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 	const db = getFirestore(app);
+	const colorScheme = useColorScheme();
+	const colors = Colors[colorScheme ?? 'light'];
 
 	const OPENWEATHER_API_KEY = 'd734f951c52155a9771143721b7eb908';
 
 	// Updated the getCategoryIcon function to assign random icons for each category
-	const getCategoryIcon = (categoryName: string) => {
-		const icons = [
-			<MaterialCommunityIcons name='barley' size={24} color='#86efac' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#bbf7d0' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#a7f3d0' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#6ee7b7' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#34d399' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#10b981' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#059669' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#047857' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#065f46' />,
-			<MaterialCommunityIcons name='barley' size={24} color='#064e3b' />,
+	const getCategoryIcon = (categoryName: string): { icon: JSX.Element, color: string } => {
+		const iconOptions = [
+			{ icon: <MaterialCommunityIcons name='barley' size={24} color='#FFFFFF' />, color: '#2E7D32' },
+			{ icon: <MaterialCommunityIcons name='leaf' size={24} color='#FFFFFF' />, color: '#388E3C' },
+			{ icon: <MaterialCommunityIcons name='food-apple' size={24} color='#FFFFFF' />, color: '#43A047' },
+			{ icon: <MaterialCommunityIcons name='carrot' size={24} color='#FFFFFF' />, color: '#4CAF50' },
+			{ icon: <MaterialCommunityIcons name='fruit-watermelon' size={24} color='#FFFFFF' />, color: '#66BB6A' },
+			{ icon: <MaterialCommunityIcons name='fruit-cherries' size={24} color='#FFFFFF' />, color: '#81C784' },
+			{ icon: <MaterialCommunityIcons name='corn' size={24} color='#FFFFFF' />, color: '#8BC34A' },
+			{ icon: <Ionicons name='nutrition' size={24} color='#FFFFFF' />, color: '#9CCC65' },
+			{ icon: <MaterialCommunityIcons name='silo' size={24} color='#FFFFFF' />, color: '#CDDC39' },
+			{ icon: <FontAwesome name='leaf' size={24} color='#FFFFFF' />, color: '#8D6E63' },
 		];
 
-		// Generate a random index to pick an icon
-		const randomIndex = Math.floor(Math.random() * icons.length);
-		return icons[randomIndex];
+		// Special case for 'all' category
+		if (categoryName === 'all') {
+			return { 
+				icon: <MaterialIcons name='category' size={24} color='#FFFFFF' />,
+				color: colors.primary
+			};
+		}
+
+		// Generate a consistent index based on the category name
+		const nameSum = categoryName.split('').reduce((sum, char) => sum + char.charCodeAt(0), 0);
+		const index = nameSum % iconOptions.length;
+		
+		return iconOptions[index];
 	};
 
 	useEffect(() => {
@@ -106,7 +133,9 @@ export default function HomeScreen() {
 						shopId: data.shopId || '',
 						unit: data.unit || '',
 						type: productType,
-						likes: data.likes || 0, // Include likes data
+						likes: data.likes || 0,
+						stock: data.stock || 0,
+						farmerId: data.farmerId || '',
 					});
 					uniqueCategories.add(productType);
 				});
@@ -114,12 +143,16 @@ export default function HomeScreen() {
 				// Sort products by likes in descending order
 				const sortedProducts = productsData.sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
-				// Create category objects with icons
+				// Create category objects with icons and colors
 				const categoryList: Category[] = Array.from(uniqueCategories).map(
-					(cat) => ({
-						name: cat,
-						icon: getCategoryIcon(cat),
-					})
+					(cat) => {
+						const iconData = getCategoryIcon(cat);
+						return {
+							name: cat,
+							icon: iconData.icon,
+							color: iconData.color
+						};
+					}
 				);
 
 				setProducts(sortedProducts);
@@ -185,7 +218,8 @@ export default function HomeScreen() {
 	}, [searchQuery, products, selectedCategory]);
 
 	const mapWeatherIcon = (iconCode: string) => {
-		const iconMap: Record<string, string> = {
+		// Map OpenWeather icon codes to Ionicons
+		const mapping: { [key: string]: WeatherData['icon'] } = {
 			'01d': 'sunny',
 			'01n': 'moon',
 			'02d': 'partly-sunny',
@@ -202,15 +236,66 @@ export default function HomeScreen() {
 			'11n': 'thunderstorm',
 			'13d': 'snow',
 			'13n': 'snow',
-			'50d': 'cloudy',
-			'50n': 'cloudy',
+			'50d': 'cloud',
+			'50n': 'cloud',
 		};
-		return iconMap[iconCode] || 'partly-sunny';
+
+		return mapping[iconCode] || 'cloud';
 	};
 
 	const handleCategoryPress = (category: string) => {
 		setSelectedCategory(category);
 	};
+
+	const onRefresh = useCallback(async () => {
+		setRefreshing(true);
+		try {
+			const querySnapshot = await getDocs(collection(db, 'products'));
+			const productsData: Product[] = [];
+			const uniqueCategories = new Set<string>(['all']);
+
+			querySnapshot.forEach((doc) => {
+				const data = doc.data();
+				const productType = data.type || 'general';
+				productsData.push({
+					id: doc.id,
+					name: data.name || 'No Name',
+					price: data.price || 0,
+					image: data.image || 'https://via.placeholder.com/150',
+					shopId: data.shopId || '',
+					unit: data.unit || '',
+					type: productType,
+					likes: data.likes || 0,
+					stock: data.stock || 0,
+					farmerId: data.farmerId || '',
+				});
+				uniqueCategories.add(productType);
+			});
+
+			// Sort products by likes in descending order
+			const sortedProducts = productsData.sort((a, b) => (b.likes || 0) - (a.likes || 0));
+
+			// Create category objects with icons and colors
+			const categoryList: Category[] = Array.from(uniqueCategories).map(
+				(cat) => {
+					const iconData = getCategoryIcon(cat);
+					return {
+						name: cat,
+						icon: iconData.icon,
+						color: iconData.color
+					};
+				}
+			);
+
+			setProducts(sortedProducts);
+			setFilteredProducts(sortedProducts);
+			setCategories(categoryList);
+		} catch (error) {
+			console.error('Error refreshing products:', error);
+		} finally {
+			setRefreshing(false);
+		}
+	}, [db]);
 
 	if (loading) {
 		return (

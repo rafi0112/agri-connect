@@ -8,6 +8,11 @@ import {
 	TextInput,
 	Alert,
 	Modal,
+	Image,
+	useColorScheme,
+	StatusBar,
+	Dimensions,
+	ScrollView,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useCart } from '../../context/CartProvider';
@@ -22,12 +27,16 @@ import {
 import { app } from '../../config/firebase';
 import { useState, useEffect } from 'react';
 import { useAuth } from '../../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import Toast from 'react-native-toast-message';
 import { useNavigation } from '@react-navigation/native';
 import LocationSelector, { LocationData } from '../../components/LocationSelector';
 import { initiateSSLCommerzPayment, generateTransactionId, PaymentData } from '../../utils/sslcommerz';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Colors } from '../../constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
+
+const { width } = Dimensions.get('window');
 
 export default function CartScreen() {
 	const {
@@ -50,6 +59,8 @@ export default function CartScreen() {
 	const [showAdvancePaymentModal, setShowAdvancePaymentModal] = useState(false);
 	const db = getFirestore(app);
 	const navigation = useNavigation();
+	const colorScheme = useColorScheme();
+	const colors = Colors[colorScheme ?? 'light'];
 
 	// Calculate advance payment (10% for COD)
 	const calculateAdvancePayment = (total: number, paymentMethod: string) => {
@@ -404,108 +415,272 @@ export default function CartScreen() {
 
 	if (loading) {
 		return (
-			<View style={styles.loadingContainer}>
-				<ActivityIndicator size='large' color='#4CAF50' />
+			<View style={[styles.loadingContainer, { backgroundColor: colors.background }]}>
+				<ActivityIndicator size='large' color={colors.primary} />
+				<Text style={[styles.loadingText, { color: colors.textLight }]}>Loading your cart...</Text>
 			</View>
 		);
 	}
 
 	return (
-		<View style={styles.container}>
+		<View style={[styles.container, { backgroundColor: colors.background }]}>
+			<StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
+			
 			{cartItems.length === 0 ? (
 				<View style={styles.emptyContainer}>
-					<Ionicons name='cart-outline' size={50} color='#ccc' />
-					<Text style={styles.emptyText}>Your cart is empty</Text>
+					<LinearGradient
+						colors={[`${colors.primary}20`, `${colors.primary}05`]}
+						style={styles.emptyGradient}
+						start={{ x: 0, y: 0 }}
+						end={{ x: 1, y: 1 }}
+					>
+						<Ionicons name='cart-outline' size={80} color={colors.primary} />
+					</LinearGradient>
+					<Text style={[styles.emptyText, { color: colors.text }]}>Your cart is empty</Text>
+					<Text style={[styles.emptySubtext, { color: colors.textLight }]}>
+						Browse our fresh agricultural products and add some items to your cart
+					</Text>
+					<TouchableOpacity
+						style={[styles.shopNowButton, { backgroundColor: colors.primary }]}
+						onPress={() => navigation.navigate('index' as never)}
+					>
+						<Text style={styles.shopNowButtonText}>Shop Now</Text>
+						<Ionicons name="arrow-forward" size={18} color="#fff" style={{ marginLeft: 8 }} />
+					</TouchableOpacity>
 				</View>
 			) : (
 				<>
+					<View style={styles.headerContainer}>
+						<LinearGradient
+							colors={[colors.primary, colors.primaryLight]}
+							start={{ x: 0, y: 0 }}
+							end={{ x: 1, y: 0 }}
+							style={styles.headerGradient}
+						>
+							<View style={styles.headerContent}>
+								<Text style={styles.headerTitle}>My Cart</Text>
+								<Text style={styles.headerSubtitle}>{cartItems.length} {cartItems.length === 1 ? 'item' : 'items'}</Text>
+							</View>
+						</LinearGradient>
+					</View>
+				
 					<FlatList
 						data={cartItems}
 						keyExtractor={(item) => item.id}
 						renderItem={({ item }) => (
-							<View style={styles.item}>
-								<View style={styles.itemInfo}>
-									<Text style={styles.itemName}>{item.name}</Text>
-									<Text style={styles.itemPrice}>
-										৳{item.price.toFixed(2)}/{item.unit}
-									</Text>
-									{item.shopName && (
-										<>
-											<Text style={styles.shopName}>Shop: {item.shopName}</Text>
-											
-										</>
-									)}
+							<View style={[styles.cartCard, { backgroundColor: colors.card }]}>
+								<View style={styles.itemImageWrapper}>
+									<Image 
+										source={{ uri: item.image || 'https://via.placeholder.com/150' }}
+										style={styles.itemImage}
+									/>
 								</View>
-								<View style={styles.itemActions}>
-									<View style={styles.quantityContainer}>
-										<TouchableOpacity
-											onPress={() => updateQuantity(item.id, item.quantity - 1)}
-											disabled={item.quantity <= 1}
-										>
-											<Ionicons
-												name='remove-circle-outline'
-												size={36}
-												color={item.quantity <= 1 ? '#ccc' : '#2e86de'}
-											/>
-										</TouchableOpacity>
-										<Text style={styles.quantity}>{item.quantity}</Text>
-										<TouchableOpacity
-											onPress={() => {
-												// Check product stock before increasing quantity
-												const checkStock = async () => {
-													try {
-														const productRef = doc(db, 'products', item.id);
-														const productSnap = await getDoc(productRef);
-														
-														if (productSnap.exists()) {
-															const productData = productSnap.data();
-															const stock = productData.stock || 0;
+								<View style={styles.itemContent}>
+									<View style={styles.itemInfo}>
+										<Text style={[styles.itemName, { color: colors.text }]}>{item.name}</Text>
+										<Text style={[styles.itemPrice, { color: colors.primary }]}>
+											৳{item.price.toFixed(2)}/{item.unit}
+										</Text>
+										{item.shopName && (
+											<View style={styles.shopInfoRow}>
+												<Ionicons name="storefront-outline" size={14} color={colors.textLight} />
+												<Text style={[styles.shopName, { color: colors.textLight }]}>
+													{item.shopName}
+												</Text>
+											</View>
+										)}
+									</View>
+									<View style={styles.itemActions}>
+										<View style={[styles.quantityContainer, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>
+											<TouchableOpacity
+												onPress={() => updateQuantity(item.id, item.quantity - 1)}
+												disabled={item.quantity <= 1}
+												style={[
+													styles.quantityButton, 
+													item.quantity <= 1 && styles.quantityButtonDisabled
+												]}
+											>
+												<Ionicons
+													name='remove'
+													size={18}
+													color={item.quantity <= 1 ? colors.textLight : colors.primary}
+												/>
+											</TouchableOpacity>
+											<Text style={[styles.quantity, { color: colors.text }]}>{item.quantity}</Text>
+											<TouchableOpacity
+												onPress={() => {
+													// Check product stock before increasing quantity
+													const checkStock = async () => {
+														try {
+															const productRef = doc(db, 'products', item.id);
+															const productSnap = await getDoc(productRef);
 															
-															if (item.quantity < stock) {
-																updateQuantity(item.id, item.quantity + 1);
-															} else {
-																Toast.show({
-																	type: 'error',
-																	text1: 'Stock Limit Reached',
-																	text2: `Only ${stock} units available`,
-																});
+															if (productSnap.exists()) {
+																const productData = productSnap.data();
+																const stock = productData.stock || 0;
+																
+																if (item.quantity < stock) {
+																	updateQuantity(item.id, item.quantity + 1);
+																} else {
+																	Toast.show({
+																		type: 'error',
+																		text1: 'Stock Limit Reached',
+																		text2: `Only ${stock} units available`,
+																	});
+																}
 															}
+														} catch (error) {
+															console.error('Error checking stock:', error);
+															Toast.show({
+																type: 'error',
+																text1: 'Error',
+																text2: 'Could not update quantity',
+															});
 														}
-													} catch (error) {
-														console.error('Error checking stock:', error);
-														Toast.show({
-															type: 'error',
-															text1: 'Error',
-															text2: 'Could not update quantity',
-														});
-													}
-												};
+													};
 												
-												checkStock();
-											}}
+													checkStock();
+												}}
+												style={styles.quantityButton}
+											>
+												<Ionicons
+													name='add'
+													size={18}
+													color={colors.primary}
+												/>
+											</TouchableOpacity>
+										</View>
+										<TouchableOpacity
+											style={[styles.removeButton, { backgroundColor: `${colors.error}15` }]
+											}
+											onPress={() => removeFromCart(item.id)}
 										>
-											<Ionicons
-												name='add-circle-outline'
-												size={36}
-												color='#2e86de'
-											/>
+											<Ionicons name='trash-outline' size={18} color={colors.error} />
 										</TouchableOpacity>
 									</View>
-									<TouchableOpacity
-										style={styles.removeButton}
-										onPress={() => removeFromCart(item.id)}
-									>
-										<Ionicons name='trash-outline' size={24} color='#fff' />
-									</TouchableOpacity>
 								</View>
 							</View>
 						)}
-						contentContainerStyle={styles.listContent}
+						contentContainerStyle={styles.cartList}
 					/>
 
-					<TouchableOpacity style={styles.toggleButton} onPress={toggleModal}>
-						<Text style={styles.toggleButtonText}>Set Delivery Details</Text>
-					</TouchableOpacity>
+					<View style={[styles.orderSummaryCard, { backgroundColor: colors.card }]}>
+						<View style={styles.summaryRow}>
+							<Text style={[styles.summaryLabel, { color: colors.textLight }]}>Subtotal:</Text>
+							<Text style={[styles.summaryValue, { color: colors.text }]}>৳{total.toFixed(2)}</Text>
+						</View>
+						<View style={styles.summaryRow}>
+							<Text style={[styles.summaryLabel, { color: colors.textLight }]}>Delivery Fee:</Text>
+							<Text style={[styles.summaryValue, { color: colors.text }]}>৳0.00</Text>
+						</View>
+						<View style={styles.divider} />
+						<View style={styles.summaryRow}>
+							<Text style={[styles.totalLabel, { color: colors.text }]}>Total:</Text>
+							<Text style={[styles.totalValue, { color: colors.primary }]}>৳{total.toFixed(2)}</Text>
+						</View>
+
+						{/* Show advance payment breakdown for COD */}
+						{paymentMethod === 'cash_on_delivery' && (
+							<View style={[styles.advanceSummary, { 
+								backgroundColor: `${colors.warning}10`,
+								borderColor: `${colors.warning}30`,
+							}]}
+							>
+								<Text style={[styles.advanceSummaryTitle, { color: colors.warning }]}>
+									Payment Breakdown:
+								</Text>
+								<View style={styles.advanceBreakdownRow}>
+									<Text style={[styles.advanceLabel, { color: colors.warning }]}>
+										Online Advance (10%):
+									</Text>
+									<Text style={[styles.advanceAmount, { color: colors.warning }]}>
+										৳{advancePaymentAmount.toFixed(2)}
+									</Text>
+								</View>
+								<View style={styles.advanceBreakdownRow}>
+									<Text style={[styles.advanceLabel, { color: colors.warning }]}>
+										Cash on Delivery:
+									</Text>
+									<Text style={[styles.advanceAmount, { color: colors.warning }]}>
+										৳{(total - advancePaymentAmount).toFixed(2)}
+									</Text>
+								</View>
+							</View>
+						)}
+
+						<View style={styles.actionButtons}>
+							<TouchableOpacity
+								style={[styles.clearButton, { borderColor: colors.error }]}
+								onPress={clearCart}
+							>
+								<Ionicons name="trash-outline" size={18} color={colors.error} />
+								<Text style={[styles.clearButtonText, { color: colors.error }]}>Clear</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity 
+								style={styles.toggleButton}
+								onPress={toggleModal}
+							>
+								<LinearGradient
+									colors={[colors.primary, colors.primaryLight]}
+									start={{ x: 0, y: 0 }}
+									end={{ x: 1, y: 0 }}
+									style={styles.toggleButtonGradient}
+								>
+									<Ionicons name="location-outline" size={20} color="#fff" />
+									<Text style={styles.toggleButtonText}>Delivery Details</Text>
+								</LinearGradient>
+							</TouchableOpacity>
+
+							{paymentMethod ? (
+								<TouchableOpacity
+									style={styles.orderButton}
+									onPress={handlePlaceOrder}
+									disabled={placingOrder || processingPayment}
+								>
+									<LinearGradient
+										colors={paymentMethod === 'cash_on_delivery' ? 
+											[colors.warning, colors.orange] : 
+											[colors.primary, colors.primaryLight]
+										}
+										start={{ x: 0, y: 0 }}
+										end={{ x: 1, y: 0 }}
+										style={styles.orderButtonGradient}
+									>
+										{placingOrder || processingPayment ? (
+											<ActivityIndicator color='#fff' size="small" />
+										) : (
+											<>
+												<Ionicons
+													name={paymentMethod === 'cash_on_delivery' ? 'cash-outline' : 'card-outline'}
+													size={20}
+													color='#fff'
+												/>
+												<Text style={styles.orderButtonText}>
+													{paymentMethod === 'cash_on_delivery' ? 'Place COD Order' : 'Click to \nPay Now'}
+												</Text>
+											</>
+										)}
+									</LinearGradient>
+								</TouchableOpacity>
+							) : (
+								<TouchableOpacity 
+									style={styles.selectPaymentButton}
+									onPress={toggleModal}
+								>
+									<LinearGradient
+										colors={[colors.info, colors.blue]}
+										start={{ x: 0, y: 0 }}
+										end={{ x: 1, y: 0 }}
+										style={styles.selectPaymentGradient}
+									>
+										<Ionicons name="card-outline" size={20} color="#fff" />
+										<Text style={styles.selectPaymentText}>Select Payment</Text>
+									</LinearGradient>
+								</TouchableOpacity>
+							)}
+						</View>
+					</View>
 
 					<Modal
 						visible={isModalVisible}
@@ -514,102 +689,140 @@ export default function CartScreen() {
 						onRequestClose={toggleModal}
 					>
 						<View style={styles.modalContainer}>
-							<View style={styles.modalContent}>
-								<Text style={styles.modalTitle}>Delivery Details</Text>
-								
-								{/* Location Selection */}
-								<View style={styles.locationSection}>
-									<Text style={styles.label}>Delivery Location:</Text>
-									<TouchableOpacity
-										style={styles.locationButton}
-										onPress={() => setIsLocationSelectorVisible(true)}
-									>
-										<Ionicons name="location-outline" size={20} color="#4CAF50" />
-										<Text style={styles.locationButtonText}>
-											{selectedLocation ? 'Change Location' : 'Select Location on Map'}
-										</Text>
+							<View style={[styles.modalContent, { backgroundColor: colors.card }]}>
+								<View style={styles.modalHeader}>
+									<Text style={[styles.modalTitle, { color: colors.text }]}>Delivery Details</Text>
+									<TouchableOpacity onPress={toggleModal} style={styles.modalCloseBtn}>
+										<Ionicons name="close" size={24} color={colors.textLight} />
 									</TouchableOpacity>
-									
-									{selectedLocation && (
-										<View style={styles.selectedLocationContainer}>
-											<Text style={styles.selectedLocationName}>
-												{selectedLocation.name || 'Selected Location'}
+								</View>
+								
+								<ScrollView  showsVerticalScrollIndicator={false}>
+									{/* Location Selection */}
+									<View style={styles.locationSection}>
+										<Text style={[styles.sectionLabel, { color: colors.text }]}>Delivery Location:</Text>
+										<TouchableOpacity
+											style={[styles.locationButton, { 
+												borderColor: colors.primary,
+												backgroundColor: `${colors.primary}05`
+											}]}
+											onPress={() => setIsLocationSelectorVisible(true)}
+										>
+											<Ionicons name="location-outline" size={20} color={colors.primary} />
+											<Text style={[styles.locationButtonText, { color: colors.primary }]}>
+												{selectedLocation ? 'Change Location' : 'Select Location on Map'}
 											</Text>
-											<Text style={styles.selectedLocationAddress}>
-												{selectedLocation.address}
-											</Text>
-											<View style={styles.coordinatesContainer}>
-												<Text style={styles.coordinatesTitle}>Coordinates:</Text>
-												<Text style={styles.coordinatesText}>
-													latitude: {selectedLocation.latitude.toString()}
+										</TouchableOpacity>
+										
+										{selectedLocation && (
+											<View style={[styles.selectedLocationContainer, { backgroundColor: `${colors.primary}10` }]}>
+												<Text style={[styles.selectedLocationName, { color: colors.text }]}
+												>
+													{selectedLocation.name || 'Selected Location'}
 												</Text>
-												<Text style={styles.coordinatesText}>
-													longitude: {selectedLocation.longitude.toString()}
+												<Text style={[styles.selectedLocationAddress, { color: colors.textLight }]}
+												>
+													{selectedLocation.address}
 												</Text>
+												<View style={styles.coordinatesContainer}>
+													<Text style={[styles.coordinatesTitle, { color: colors.primary }]}>Coordinates:</Text>
+													<Text style={[styles.coordinatesText, { color: colors.textLight }]}
+													>
+														latitude: {selectedLocation.latitude.toString()}
+													</Text>
+													<Text style={[styles.coordinatesText, { color: colors.textLight }]}
+													>
+														longitude: {selectedLocation.longitude.toString()}
+													</Text>
+												</View>
 											</View>
+										)}
+									</View>
+
+									{/* Manual Address Input */}
+									<Text style={[styles.sectionLabel, { color: colors.text }]}>Delivery Address:</Text>
+									<TextInput
+										style={[styles.input, { 
+											borderColor: colors.border,
+											backgroundColor: `${colors.primary}05`,
+											color: colors.text
+										}]}
+										value={deliveryAddress}
+										onChangeText={setDeliveryAddress}
+										placeholder='Enter your delivery address'
+										placeholderTextColor={colors.textLight}
+										multiline
+									/>
+
+									{/* Payment Method */}
+									<Text style={[styles.sectionLabel, { color: colors.text }]}>Payment Method:</Text>
+									<View style={[styles.pickerContainer, { 
+										borderColor: colors.border, 
+										backgroundColor: `${colors.primary}05`
+									}]}
+									>
+										<Picker
+											selectedValue={paymentMethod}
+											onValueChange={(itemValue) => setPaymentMethod(itemValue)}
+											style={styles.picker}
+											dropdownIconColor={colors.primary}
+										>
+											<Picker.Item label="Select Payment Method" value="" />
+											<Picker.Item
+												label='Cash on Delivery (10% advance required)'
+												value='cash_on_delivery'
+											/>
+											<Picker.Item label='Online Payment (SSL Commerz)' value='online_payment' />
+										</Picker>
+									</View>
+
+									{/* Payment Info */}
+									{paymentMethod === 'online_payment' && (
+										<View style={[styles.paymentInfo, { backgroundColor: `${colors.info}15` }]}>
+											<Ionicons name="card-outline" size={20} color={colors.info} />
+											<Text style={[styles.paymentInfoText, { color: colors.info }]}
+											>
+												You will be redirected to SSL Commerz for secure payment
+											</Text>
 										</View>
 									)}
+
+									{/* COD Advance Payment Info */}
+									{paymentMethod === 'cash_on_delivery' && (
+										<View style={[styles.codAdvanceInfo, { 
+											backgroundColor: `${colors.warning}15`,
+											borderColor: `${colors.warning}30`,
+										}]}
+										>
+											<Ionicons name="cash-outline" size={20} color={colors.warning} />
+											<Text style={[styles.codAdvanceInfoText, { color: colors.warning }]}
+											>
+												Cash on Delivery requires 10% advance payment (৳{advancePaymentAmount.toFixed(2)}) online. 
+												Remaining ৳{(total - advancePaymentAmount).toFixed(2)} will be collected on delivery.
+											</Text>
+										</View>
+									)}
+									
+									{/* Add padding at the bottom to ensure all content is accessible */}
+									<View  />
+								</ScrollView>
+
+								{/* Button container with fixed position */}
+								<View style={styles.modalButtonContainer}>
+									<TouchableOpacity
+										style={[styles.closeButton, { backgroundColor: colors.error }]}
+										onPress={toggleModal}
+									>
+										<Text style={[styles.closeButtonText, { color: '#fff' }]}>Cancel</Text>
+									</TouchableOpacity>
+									
+									<TouchableOpacity
+										style={[styles.saveButton, { backgroundColor: colors.primary }]}
+										onPress={handleSetDetails}
+									>
+										<Text style={styles.saveButtonText}>Save Details</Text>
+									</TouchableOpacity>
 								</View>
-
-								{/* Manual Address Input */}
-								<Text style={styles.label}>Delivery Address:</Text>
-								<TextInput
-									style={styles.input}
-									value={deliveryAddress}
-									onChangeText={setDeliveryAddress}
-									placeholder='Enter your delivery address'
-									multiline
-								/>
-
-								{/* Payment Method */}
-								<Text style={styles.label}>Payment Method:</Text>
-								<Picker
-									selectedValue={paymentMethod}
-									onValueChange={(itemValue) => setPaymentMethod(itemValue)}
-									style={styles.picker}
-								>
-									<Picker.Item label="Select Payment Method" value="" />
-									<Picker.Item
-										label='Cash on Delivery (10% advance required)'
-										value='cash_on_delivery'
-									/>
-									<Picker.Item label='Online Payment (SSL Commerz)' value='online_payment' />
-								</Picker>
-
-								{/* Payment Info */}
-								{paymentMethod === 'online_payment' && (
-									<View style={styles.paymentInfo}>
-										<Ionicons name="card-outline" size={20} color="#2196F3" />
-										<Text style={styles.paymentInfoText}>
-											You will be redirected to SSL Commerz for secure payment
-										</Text>
-									</View>
-								)}
-
-								{/* COD Advance Payment Info */}
-								{paymentMethod === 'cash_on_delivery' && (
-									<View style={styles.codAdvanceInfo}>
-										<Ionicons name="cash-outline" size={20} color="#FF9800" />
-										<Text style={styles.codAdvanceInfoText}>
-											Cash on Delivery requires 10% advance payment (৳{advancePaymentAmount.toFixed(2)}) online. 
-											Remaining ৳{(total - advancePaymentAmount).toFixed(2)} will be collected on delivery.
-										</Text>
-									</View>
-								)}
-
-								<TouchableOpacity
-									style={styles.saveButton}
-									onPress={handleSetDetails}
-								>
-									<Text style={styles.saveButtonText}>Save Details</Text>
-								</TouchableOpacity>
-
-								<TouchableOpacity
-									style={styles.closeButton}
-									onPress={toggleModal}
-								>
-									<Text style={styles.closeButtonText}>Close</Text>
-								</TouchableOpacity>
 							</View>
 						</View>
 					</Modal>
@@ -622,150 +835,119 @@ export default function CartScreen() {
 						initialLocation={selectedLocation || undefined}
 					/>
 
-					<View style={styles.summaryContainer}>
-						<View style={styles.totalRow}>
-							<Text style={styles.totalLabel}>Total:</Text>
-							<Text style={styles.totalAmount}>৳{total.toFixed(2)}</Text>
-						</View>
-
-						{/* Show advance payment breakdown for COD */}
-						{paymentMethod === 'cash_on_delivery' && (
-							<View style={styles.advanceSummary}>
-								<Text style={styles.advanceSummaryTitle}>Payment Breakdown:</Text>
-								<View style={styles.advanceBreakdownRow}>
-									<Text style={styles.advanceLabel}>Online Advance (10%):</Text>
-									<Text style={styles.advanceAmount}>৳{advancePaymentAmount.toFixed(2)}</Text>
+					{/* Advance Payment Modal for COD */}
+					<Modal
+						visible={showAdvancePaymentModal}
+						animationType='slide'
+						transparent={true}
+						onRequestClose={() => setShowAdvancePaymentModal(false)}
+					>
+						<View style={styles.modalContainer}>
+							<View style={[styles.advancePaymentModalContent, { backgroundColor: colors.card }]}>
+								<View style={styles.advancePaymentHeader}>
+									<LinearGradient
+										colors={[colors.warning, colors.orange]}
+										style={styles.advancePaymentIconCircle}
+									>
+										<Ionicons name="cash-outline" size={32} color="#fff" />
+									</LinearGradient>
+									<Text style={[styles.advancePaymentTitle, { color: colors.text }]}>
+										Cash on Delivery
+									</Text>
 								</View>
-								<View style={styles.advanceBreakdownRow}>
-									<Text style={styles.advanceLabel}>Cash on Delivery:</Text>
-									<Text style={styles.advanceAmount}>৳{(total - advancePaymentAmount).toFixed(2)}</Text>
+								
+								<Text style={[styles.advancePaymentSubtitle, { color: colors.textLight }]}
+								>
+									To confirm your cash on delivery order, you need to pay an advance amount online.
+								</Text>
+
+								<View style={[styles.paymentBreakdown, { backgroundColor: `${colors.primary}05` }]}
+								>
+									<View style={styles.breakdownRow}>
+										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
+										>
+											Total Order Amount:
+										</Text>
+										<Text style={[styles.breakdownAmount, { color: colors.text }]}
+										>
+											৳{total.toFixed(2)}
+										</Text>
+									</View>
+									<View style={styles.breakdownRow}>
+										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
+										>
+											Advance Payment (10%):
+										</Text>
+										<Text style={[styles.breakdownAmountHighlight, { color: colors.warning }]}
+										>
+											৳{advancePaymentAmount.toFixed(2)}
+										</Text>
+									</View>
+									<View style={styles.breakdownRow}>
+										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
+										>
+											Cash on Delivery:
+										</Text>
+										<Text style={[styles.breakdownAmount, { color: colors.text }]}
+										>
+											৳{(total - advancePaymentAmount).toFixed(2)}
+										</Text>
+									</View>
+								</View>
+
+								<View style={[styles.advancePaymentInfo, { backgroundColor: `${colors.info}15` }]}
+								>
+									<Ionicons name="information-circle-outline" size={20} color={colors.info} />
+									<Text style={[styles.advancePaymentInfoText, { color: colors.info }]}
+									>
+										You'll pay ৳{advancePaymentAmount.toFixed(2)} now via SSL Commerz and the remaining ৳{(total - advancePaymentAmount).toFixed(2)} will be collected upon delivery.
+									</Text>
+								</View>
+
+								<View style={styles.floatingButtonContainer}>
+									<TouchableOpacity
+										style={styles.payAdvanceButton}
+										onPress={() => proceedWithOrder(true)}
+										disabled={placingOrder || processingPayment}
+									>
+										<LinearGradient
+											colors={[colors.warning, colors.orange]}
+											start={{ x: 0, y: 0 }}
+											end={{ x: 1, y: 0 }}
+											style={styles.payAdvanceButtonGradient}
+										>
+											{placingOrder || processingPayment ? (
+												<ActivityIndicator color='#fff' />
+											) : (
+												<>
+													<Ionicons name="card-outline" size={20} color="#fff" />
+													<Text style={styles.payAdvanceButtonText}>
+														Pay Advance ৳{advancePaymentAmount.toFixed(2)}
+													</Text>
+												</>
+											)}
+										</LinearGradient>
+									</TouchableOpacity>
+
+									<TouchableOpacity
+										style={[styles.cancelAdvanceButton, { 
+											borderColor: colors.border,
+											backgroundColor: colors.cardAlt 
+										}]}
+										onPress={() => setShowAdvancePaymentModal(false)}
+										disabled={placingOrder || processingPayment}
+									>
+										<Text style={[styles.cancelAdvanceButtonText, { color: colors.textLight }]}
+										>
+											Cancel
+										</Text>
+									</TouchableOpacity>
 								</View>
 							</View>
-						)}
-
-						<View style={styles.buttonContainer}>
-							<TouchableOpacity
-								style={[styles.button, styles.clearButton]}
-								onPress={clearCart}
-							>
-								<Text style={styles.clearButtonText}>Clear Cart</Text>
-							</TouchableOpacity>
-
-							{paymentMethod === 'online_payment' ? (
-								<TouchableOpacity
-									style={[styles.button, styles.payOnlineButton]}
-									onPress={handlePlaceOrder}
-									disabled={placingOrder || processingPayment}
-								>
-									{placingOrder || processingPayment ? (
-										<ActivityIndicator color='#fff' />
-									) : (
-										<>
-											<Ionicons
-												name='card-outline'
-												size={20}
-												color='#fff'
-											/>
-											<Text style={styles.buttonText}>Pay Online</Text>
-										</>
-									)}
-								</TouchableOpacity>
-							) : (
-								<TouchableOpacity
-									style={[styles.button, paymentMethod === 'cash_on_delivery' ? styles.codButton : styles.orderButton]}
-									onPress={handlePlaceOrder}
-									disabled={placingOrder}
-								>
-									{placingOrder ? (
-										<ActivityIndicator color='#fff' />
-									) : (
-										<>
-											<Ionicons
-												name={paymentMethod === 'cash_on_delivery' ? 'cash-outline' : 'checkmark-circle-outline'}
-												size={20}
-												color='#fff'
-											/>
-											<Text style={styles.buttonText}>
-												{paymentMethod === 'cash_on_delivery' ? 'Place COD Order' : 'Place Order'}
-											</Text>
-										</>
-									)}
-								</TouchableOpacity>
-							)}
 						</View>
-					</View>
+					</Modal>
 				</>
 			)}
-
-			{/* Advance Payment Modal for COD */}
-			<Modal
-				visible={showAdvancePaymentModal}
-				animationType='slide'
-				transparent={true}
-				onRequestClose={() => setShowAdvancePaymentModal(false)}
-			>
-				<View style={styles.modalContainer}>
-					<View style={styles.advancePaymentModalContent}>
-						<View style={styles.advancePaymentHeader}>
-							<Ionicons name="cash-outline" size={32} color="#FF9800" />
-							<Text style={styles.advancePaymentTitle}>Cash on Delivery</Text>
-						</View>
-						
-						<Text style={styles.advancePaymentSubtitle}>
-							To confirm your cash on delivery order, you need to pay an advance amount online.
-						</Text>
-
-						<View style={styles.paymentBreakdown}>
-							<View style={styles.breakdownRow}>
-								<Text style={styles.breakdownLabel}>Total Order Amount:</Text>
-								<Text style={styles.breakdownAmount}>৳{total.toFixed(2)}</Text>
-							</View>
-							<View style={styles.breakdownRow}>
-								<Text style={styles.breakdownLabel}>Advance Payment (10%):</Text>
-								<Text style={styles.breakdownAmountHighlight}>৳{advancePaymentAmount.toFixed(2)}</Text>
-							</View>
-							<View style={styles.breakdownRow}>
-								<Text style={styles.breakdownLabel}>Cash on Delivery:</Text>
-								<Text style={styles.breakdownAmount}>৳{(total - advancePaymentAmount).toFixed(2)}</Text>
-							</View>
-						</View>
-
-						<View style={styles.advancePaymentInfo}>
-							<Ionicons name="information-circle-outline" size={20} color="#2196F3" />
-							<Text style={styles.advancePaymentInfoText}>
-								You'll pay ৳{advancePaymentAmount.toFixed(2)} now via SSL Commerz and the remaining ৳{(total - advancePaymentAmount).toFixed(2)} will be collected upon delivery.
-							</Text>
-						</View>
-
-						<View style={styles.advancePaymentButtons}>
-							<TouchableOpacity
-								style={styles.payAdvanceButton}
-								onPress={() => proceedWithOrder(true)}
-								disabled={placingOrder || processingPayment}
-							>
-								{placingOrder || processingPayment ? (
-									<ActivityIndicator color='#fff' />
-								) : (
-									<>
-										<Ionicons name="card-outline" size={20} color="#fff" />
-										<Text style={styles.payAdvanceButtonText}>
-											Pay Advance ৳{advancePaymentAmount.toFixed(2)}
-										</Text>
-									</>
-								)}
-							</TouchableOpacity>
-
-							<TouchableOpacity
-								style={styles.cancelAdvanceButton}
-								onPress={() => setShowAdvancePaymentModal(false)}
-								disabled={placingOrder || processingPayment}
-							>
-								<Text style={styles.cancelAdvanceButtonText}>Cancel</Text>
-							</TouchableOpacity>
-						</View>
-					</View>
-				</View>
-			</Modal>
 		</View>
 	);
 }
@@ -773,122 +955,216 @@ export default function CartScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		padding: 16,
-		backgroundColor: '#f8f9fa',
-		marginBottom: 90,
+		backgroundColor: '#f9fbf7',
 	},
 	loadingContainer: {
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
+		padding: 24,
+	},
+	loadingText: {
+		marginTop: 12,
+		fontSize: 16,
+		fontWeight: '500',
+	},
+	headerContainer: {
+		marginBottom: 16,
+	},
+	headerGradient: {
+		borderBottomLeftRadius: 24,
+		borderBottomRightRadius: 24,
+		overflow: 'hidden',
+		height: 120,
+	},
+	headerContent: {
+		padding: 24,
+		height: '100%',
+		justifyContent: 'center',
+	},
+	headerTitle: {
+		fontSize: 28,
+		fontWeight: 'bold',
+		color: '#fff',
+		marginBottom: 4,
+	},
+	headerSubtitle: {
+		fontSize: 16,
+		color: 'rgba(255, 255, 255, 0.8)',
+		fontWeight: '500',
 	},
 	emptyContainer: {
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
+		padding: 40,
+		marginTop: -40,
+	},
+	emptyGradient: {
+		width: 160,
+		height: 160,
+		borderRadius: 80,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginBottom: 24,
 	},
 	emptyText: {
-		fontSize: 18,
-		color: '#666',
+		fontSize: 24,
+		fontWeight: 'bold',
+		marginBottom: 12,
+	},
+	emptySubtext: {
+		fontSize: 16,
+		textAlign: 'center',
+		marginBottom: 24,
+		paddingHorizontal: 20,
+		lineHeight: 22,
+	},
+	shopNowButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 24,
+		borderRadius: 12,
 		marginTop: 16,
 	},
-	listContent: {
-		paddingBottom: 16,
+	shopNowButtonText: {
+		color: 'white',
+		fontSize: 16,
+		fontWeight: 'bold',
 	},
-	item: {
-		backgroundColor: '#fff',
-		borderRadius: 8,
+	cartList: {
 		padding: 16,
-		marginBottom: 12,
+		paddingBottom: 280, // Increased space for the fixed bottom panel and tab bar
+	},
+	cartCard: {
+		flexDirection: 'row',
+		borderRadius: 16,
+		marginBottom: 16,
+		overflow: 'hidden',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.1,
+		shadowRadius: 8,
+		elevation: 3,
+	},
+	itemImageWrapper: {
+		width: 100,
+		height: 100,
+		backgroundColor: '#f5f7f3',
+	},
+	itemImage: {
+		width: '100%',
+		height: '100%',
+		resizeMode: 'cover',
+	},
+	itemContent: {
+		flex: 1,
+		padding: 12,
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		alignItems: 'center',
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.1,
-		shadowRadius: 2,
-		elevation: 2,
 	},
 	itemInfo: {
 		flex: 1,
+		marginRight: 8,
 	},
 	itemName: {
 		fontSize: 16,
-		fontWeight: '500',
+		fontWeight: '600',
 		marginBottom: 4,
 	},
 	itemPrice: {
-		fontSize: 14,
-		color: '#666',
-		marginBottom: 4,
+		fontSize: 15,
 		fontWeight: 'bold',
+		marginBottom: 4,
 	},
-	shopName: {
-		fontSize: 14,
-		color: '#888',
-		fontStyle: 'italic',
-		fontWeight: '500',
-	},
-	itemActions: {
+	shopInfoRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
+	},
+	shopName: {
+		fontSize: 12,
+		marginLeft: 4,
+	},
+	itemActions: {
+		justifyContent: 'space-between',
 	},
 	quantityContainer: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		marginRight: 10,
+		borderRadius: 12,
+		borderWidth: 1,
+		marginBottom: 8,
+	},
+	quantityButton: {
+		padding: 6,
+		borderRadius: 8,
+	},
+	quantityButtonDisabled: {
+		opacity: 0.5,
 	},
 	quantity: {
-		marginHorizontal: 12,
-		fontSize: 18,
+		fontSize: 14,
 		fontWeight: '600',
+		paddingHorizontal: 8,
 	},
 	removeButton: {
-		backgroundColor: '#ff3b30',
-		borderRadius: 20,
-		width: 40,
-		height: 40,
-		justifyContent: 'center',
-		alignItems: 'center',
-		marginLeft: 15,
-	},
-	summaryContainer: {
-		backgroundColor: '#fff',
+		padding: 8,
 		borderRadius: 8,
-		padding: 16,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.1,
-		shadowRadius: 2,
-		elevation: 2,
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
-	totalRow: {
+	orderSummaryCard: {
+		position: 'absolute',
+		bottom: 0,
+		left: 0,
+		right: 0,
+		padding: 20,
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: -4 },
+		shadowOpacity: 0.1,
+		shadowRadius: 12,
+		elevation: 10,
+		paddingBottom: 36,
+	},
+	summaryRow: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		marginBottom: 16,
+		marginBottom: 8,
+	},
+	summaryLabel: {
+		fontSize: 14,
+	},
+	summaryValue: {
+		fontSize: 14,
+		fontWeight: '500',
+	},
+	divider: {
+		height: 1,
+		backgroundColor: '#eaefea',
+		marginVertical: 12,
 	},
 	totalLabel: {
 		fontSize: 18,
-		fontWeight: '500',
-	},
-	totalAmount: {
-		fontSize: 18,
 		fontWeight: 'bold',
-		color: '#2e86de',
+	},
+	totalValue: {
+		fontSize: 20,
+		fontWeight: 'bold',
 	},
 	advanceSummary: {
-		backgroundColor: '#fff3e0',
-		borderRadius: 8,
 		padding: 12,
+		borderRadius: 12,
 		marginTop: 12,
+		marginBottom: 16,
 		borderWidth: 1,
-		borderColor: '#FFB74D',
 	},
 	advanceSummaryTitle: {
-		fontSize: 14,
-		fontWeight: 'bold',
-		color: '#F57C00',
+		fontWeight: '600',
 		marginBottom: 8,
+		fontSize: 14,
 	},
 	advanceBreakdownRow: {
 		flexDirection: 'row',
@@ -896,138 +1172,127 @@ const styles = StyleSheet.create({
 		marginBottom: 4,
 	},
 	advanceLabel: {
-		fontSize: 14,
-		color: '#F57C00',
+		fontSize: 13,
 	},
 	advanceAmount: {
-		fontSize: 14,
+		fontSize: 13,
 		fontWeight: '600',
-		color: '#F57C00',
 	},
-	buttonContainer: {
+	actionButtons: {
 		flexDirection: 'row',
-		justifyContent: 'space-between',
-	},
-	button: {
-		flex: 1,
-		padding: 12,
-		borderRadius: 8,
-		alignItems: 'center',
-		justifyContent: 'center',
-		flexDirection: 'row',
+		marginTop: 16,
+		marginBottom: 94,
 	},
 	clearButton: {
-		backgroundColor: '#fff',
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 10,
+		paddingHorizontal: 12,
 		borderWidth: 1,
-		borderColor: '#ff3b30',
+		borderRadius: 12,
 		marginRight: 8,
 	},
 	clearButtonText: {
-		color: '#ff3b30',
-		fontWeight: 'bold',
-		marginLeft: 8,
-	},
-	orderButton: {
-		backgroundColor: '#14532d', // dark green
-		marginLeft: 8,
-	},
-	codButton: {
-		backgroundColor: '#FF9800',
-		marginLeft: 8,
-	},
-	buttonText: {
-		color: '#fff',
-		fontWeight: 'bold',
-		marginLeft: 8,
-	},
-	detailsContainer: {
-		marginVertical: 16,
-		padding: 16,
-		backgroundColor: '#fff',
-		borderRadius: 8,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.1,
-		shadowRadius: 2,
-		elevation: 2,
-	},
-	label: {
-		fontSize: 16,
-		fontWeight: '500',
-		marginBottom: 8,
-	},
-	input: {
-		borderWidth: 1,
-		borderColor: '#ccc',
-		borderRadius: 8,
-		padding: 12,
-		marginBottom: 16,
-		fontSize: 16,
-	},
-	saveButton: {
-		backgroundColor: '#14532d', // dark green
-		padding: 12,
-		borderRadius: 8,
-		alignItems: 'center',
-	},
-	saveButtonText: {
-		color: '#fff',
-		fontWeight: 'bold',
-		fontSize: 16,
+		fontSize: 14,
+		fontWeight: '600',
+		marginLeft: 4,
 	},
 	toggleButton: {
-		backgroundColor: '#14532d', // dark green
-		padding: 12,
-		borderRadius: 8,
+		flex: 1,
+		marginRight: 8,
+	},
+	toggleButtonGradient: {
+		flexDirection: 'row',
 		alignItems: 'center',
-		marginVertical: 16,
+		justifyContent: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		borderRadius: 12,
 	},
 	toggleButtonText: {
 		color: '#fff',
-		fontWeight: 'bold',
-		fontSize: 16,
+		fontSize: 14,
+		fontWeight: '600',
+		marginLeft: 8,
+	},
+	orderButton: {
+		flex: 1.5,
+	},
+	orderButtonGradient: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		borderRadius: 12,
+	},
+	orderButtonText: {
+		color: '#fff',
+		fontSize: 14,
+		fontWeight: '600',
+		marginLeft: 8,
+	},
+	selectPaymentButton: {
+		flex: 1.5,
+	},
+	selectPaymentGradient: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		borderRadius: 12,
+	},
+	selectPaymentText: {
+		color: '#fff',
+		fontSize: 14,
+		fontWeight: '600',
+		marginLeft: 8,
 	},
 	modalContainer: {
 		flex: 1,
-		justifyContent: 'center',
-		alignItems: 'center',
+		justifyContent: 'flex-end',
 		backgroundColor: 'rgba(0, 0, 0, 0.5)',
 	},
 	modalContent: {
-		width: '90%',
-		backgroundColor: '#fff',
-		borderRadius: 8,
-		padding: 16,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 1 },
-		shadowOpacity: 0.1,
-		shadowRadius: 2,
-		elevation: 2,
+		borderTopLeftRadius: 24,
+		borderTopRightRadius: 24,
+		paddingHorizontal: 20,
+		paddingTop: 24,
+		paddingBottom: 0, // No extra bottom padding since we'll have fixed buttons
+		maxHeight: '90%',
+		marginBottom: 36,
+		display: 'flex',
+		flexDirection: 'column',
 	},
-	picker: {
-		borderWidth: 1,
-		borderColor: '#ccc',
-		borderRadius: 8,
+	modalButtonContainer: {
+		flexDirection: 'row',
+		paddingVertical: 16,
+		paddingHorizontal: 20,
+		borderTopWidth: 1,
+		borderTopColor: 'rgba(0, 0, 0, 0.05)',
+		backgroundColor: '#fff',
+		marginTop: 10,
+	},
+	modalHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
 		marginBottom: 16,
 	},
-	closeButton: {
-		backgroundColor: '#ff3b30',
-		padding: 12,
-		borderRadius: 8,
-		alignItems: 'center',
-		marginTop: 16,
-	},
-	closeButtonText: {
-		color: '#fff',
-		fontWeight: 'bold',
-		fontSize: 16,
-	},
 	modalTitle: {
-		fontSize: 20,
+		fontSize: 22,
 		fontWeight: 'bold',
-		marginBottom: 20,
-		textAlign: 'center',
-		color: '#333',
+	},
+	modalCloseBtn: {
+		padding: 8,
+	},
+	sectionLabel: {
+		fontSize: 16,
+		fontWeight: '600',
+		marginBottom: 8,
+		marginTop: 16,
 	},
 	locationSection: {
 		marginBottom: 16,
@@ -1037,120 +1302,193 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		padding: 12,
 		borderWidth: 1,
-		borderColor: '#4CAF50',
-		borderRadius: 8,
-		backgroundColor: '#f8f9fa',
+		borderRadius: 12,
 		marginBottom: 8,
 	},
 	locationButtonText: {
 		marginLeft: 8,
-		color: '#4CAF50',
 		fontWeight: '500',
 	},
 	selectedLocationContainer: {
-		backgroundColor: '#e8f5e8',
 		padding: 12,
-		borderRadius: 8,
+		borderRadius: 12,
 		marginTop: 8,
 	},
 	selectedLocationName: {
 		fontSize: 16,
 		fontWeight: 'bold',
-		color: '#333',
 		marginBottom: 4,
 	},
 	selectedLocationAddress: {
 		fontSize: 14,
-		color: '#666',
 		lineHeight: 20,
-	},
-	paymentInfo: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		backgroundColor: '#e3f2fd',
-		padding: 12,
-		borderRadius: 8,
-		marginBottom: 16,
-	},
-	paymentInfoText: {
-		marginLeft: 8,
-		fontSize: 14,
-		color: '#2196F3',
-		flex: 1,
-	},
-	codAdvanceInfo: {
-		flexDirection: 'row',
-		alignItems: 'flex-start',
-		backgroundColor: '#fff3e0',
-		padding: 12,
-		borderRadius: 8,
-		marginBottom: 16,
-		borderWidth: 1,
-		borderColor: '#FFB74D',
-	},
-	codAdvanceInfoText: {
-		marginLeft: 8,
-		fontSize: 14,
-		color: '#F57C00',
-		flex: 1,
-		lineHeight: 20,
-	},
-	payOnlineButton: {
-		backgroundColor: '#14532d', // dark green for online payment
-		marginLeft: 8,
 	},
 	coordinatesContainer: {
 		marginTop: 8,
 		paddingTop: 8,
 		borderTopWidth: 1,
-		borderTopColor: '#e0e0e0',
+		borderTopColor: 'rgba(0, 0, 0, 0.1)',
 	},
 	coordinatesTitle: {
 		fontSize: 12,
 		fontWeight: 'bold',
-		color: '#4CAF50',
 		marginBottom: 4,
 	},
 	coordinatesText: {
 		fontSize: 11,
-		color: '#666',
 		marginLeft: 8,
 	},
-	// Advance Payment Modal Styles
+	input: {
+		borderWidth: 1,
+		borderRadius: 12,
+		padding: 12,
+		fontSize: 16,
+		minHeight: 100,
+		textAlignVertical: 'top',
+	},
+	pickerContainer: {
+		borderWidth: 1,
+		borderRadius: 12,
+		marginBottom: 16,
+		overflow: 'hidden',
+	},
+	picker: {
+		height: 60,
+	},
+	paymentInfo: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		padding: 12,
+		borderRadius: 12,
+		marginBottom: 16,
+	},
+	paymentInfoText: {
+		marginLeft: 8,
+		fontSize: 14,
+		flex: 1,
+		lineHeight: 20,
+	},
+	codAdvanceInfo: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		padding: 12,
+		borderRadius: 12,
+		marginBottom: 16,
+		borderWidth: 1,
+	},
+	codAdvanceInfoText: {
+		marginLeft: 8,
+		fontSize: 14,
+		flex: 1,
+		lineHeight: 20,
+	},
+	modalButtonsRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		marginTop: 32,
+		marginBottom: 20,
+		paddingTop: 12,
+		paddingHorizontal: 4,
+	},
+	floatingButtonContainer: {
+		flexDirection: 'row',
+		position: 'absolute',
+		bottom: 40,
+		left: 20,
+		right: 20,
+		paddingVertical: 16,
+		backgroundColor: 'rgba(255, 255, 255, 0.95)',
+		borderRadius: 16,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: -2 },
+		shadowOpacity: 0.15,
+		shadowRadius: 10,
+		elevation: 8,
+		borderWidth: 1,
+		borderColor: 'rgba(0, 0, 0, 0.05)',
+		zIndex: 999,
+	},
+	closeButton: {
+		padding: 16,
+		borderRadius: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+		flex: 1,
+		marginRight: 12,
+		marginBottom: 0, // Removed bottom margin since we're using the floating container
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.15,
+		shadowRadius: 4,
+		elevation: 4,
+		height: 56, // Fixed height for consistency
+	},
+	closeButtonText: {
+		fontWeight: '700',
+		fontSize: 16,
+	},
+	saveButton: {
+		padding: 16,
+		borderRadius: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+		flex: 2,
+		marginBottom: 0, // Removed bottom margin since we're using the floating container
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 3 },
+		shadowOpacity: 0.2,
+		shadowRadius: 5,
+		elevation: 6,
+		height: 56, // Fixed height for consistency
+	},
+	saveButtonText: {
+		color: '#fff',
+		fontWeight: '700', // Increased font weight
+		fontSize: 17, // Increased font size
+		textShadowColor: 'rgba(0,0,0,0.1)',
+		textShadowOffset: { width: 0, height: 1 },
+		textShadowRadius: 2, // Added text shadow for better contrast
+	},
 	advancePaymentModalContent: {
-		backgroundColor: '#fff',
-		borderRadius: 20,
+		borderRadius: 24,
 		padding: 24,
-		margin: 20,
+		paddingBottom: 120, // Increased to accommodate floating buttons
+		margin: 16,
+		marginBottom: 56,
 		maxHeight: '80%',
 		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.25,
 		shadowRadius: 8,
 		elevation: 10,
+		position: 'relative', // Added for proper positioning of floating buttons
 	},
 	advancePaymentHeader: {
 		alignItems: 'center',
 		marginBottom: 20,
 	},
+	advancePaymentIconCircle: {
+		width: 64,
+		height: 64,
+		borderRadius: 32,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginBottom: 12,
+	},
 	advancePaymentTitle: {
 		fontSize: 22,
 		fontWeight: 'bold',
-		color: '#333',
-		marginTop: 8,
 	},
 	advancePaymentSubtitle: {
 		fontSize: 16,
-		color: '#666',
 		textAlign: 'center',
 		lineHeight: 24,
 		marginBottom: 24,
 	},
 	paymentBreakdown: {
-		backgroundColor: '#f8f9fa',
-		borderRadius: 12,
-		padding: 16,
-		marginBottom: 20,
+		borderRadius: 16,
+		padding: 18, // Increased padding
+		marginBottom: 22, // Increased bottom margin
 	},
 	breakdownRow: {
 		flexDirection: 'row',
@@ -1160,61 +1498,56 @@ const styles = StyleSheet.create({
 	},
 	breakdownLabel: {
 		fontSize: 14,
-		color: '#666',
 		flex: 1,
 	},
 	breakdownAmount: {
 		fontSize: 14,
 		fontWeight: '600',
-		color: '#333',
 	},
 	breakdownAmountHighlight: {
 		fontSize: 16,
 		fontWeight: 'bold',
-		color: '#FF9800',
 	},
 	advancePaymentInfo: {
 		flexDirection: 'row',
 		alignItems: 'flex-start',
-		backgroundColor: '#e3f2fd',
-		padding: 16,
+		padding: 18, // Increased padding
 		borderRadius: 12,
-		marginBottom: 24,
+		marginBottom: 28, // Increased bottom margin
 	},
 	advancePaymentInfoText: {
 		marginLeft: 12,
 		fontSize: 14,
-		color: '#2196F3',
 		flex: 1,
 		lineHeight: 20,
 	},
 	advancePaymentButtons: {
-		gap: 12,
+		gap: 16, // Increased gap between buttons
+		marginTop: 8, // Added top margin for better spacing
 	},
 	payAdvanceButton: {
-		backgroundColor: '#FF9800',
+		width: '70%',
+	},
+	payAdvanceButtonGradient: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'center',
-		padding: 16,
+		padding: 18, // Increased padding
 		borderRadius: 12,
-		gap: 8,
 	},
 	payAdvanceButtonText: {
 		color: '#fff',
 		fontSize: 16,
 		fontWeight: 'bold',
+		marginLeft: 8,
 	},
 	cancelAdvanceButton: {
-		backgroundColor: 'transparent',
 		borderWidth: 1,
-		borderColor: '#ddd',
-		padding: 16,
+		padding: 18, // Increased padding
 		borderRadius: 12,
 		alignItems: 'center',
 	},
 	cancelAdvanceButtonText: {
-		color: '#666',
 		fontSize: 16,
 		fontWeight: '500',
 	},

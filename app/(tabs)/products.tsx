@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { View, Text, FlatList, SectionList, Image, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Switch, ScrollView, TextInput } from 'react-native';
+import { View, Text, FlatList, SectionList, Image, StyleSheet, TouchableOpacity, Alert, ActivityIndicator, Switch, ScrollView, TextInput, useColorScheme } from 'react-native';
 import { collection, getDocs, getFirestore, doc, getDoc } from 'firebase/firestore';
 import { app } from '../../config/firebase';
 import { Link } from 'expo-router';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { getCurrentLocation, calculateDistance, formatDistance, sortByDistance, isValidLocation, normalizeLocation } from '../../utils/location';
 import { quickNavigateToGoogleMaps } from '../../utils/navigation';
 import NearbyShopsMap from '../../components/NearbyShopsMap';
 import DebugShopData from '../../components/DebugShopData';
 import { useCart } from '../../context/CartProvider';
 import Toast from 'react-native-toast-message';
+import { Colors } from '../../constants/Colors';
+import { LinearGradient } from 'expo-linear-gradient';
 
 // Define the Product type
 type Product = {
@@ -70,6 +72,8 @@ export default function ProductsScreen() {
   const [showDistanceModal, setShowDistanceModal] = useState(false); // Distance selection modal
   const { addToCart } = useCart();
   const db = getFirestore(app);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? 'light'];
 
   useEffect(() => {
     const initializeLocation = async () => {
@@ -284,111 +288,147 @@ export default function ProductsScreen() {
 
   if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#2d5a3d" />
-        <Text style={styles.loadingText}>Loading products...</Text>
+      <View style={[styles.loadingContainer, {backgroundColor: colors.background}]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+        <Text style={[styles.loadingText, {color: colors.textPrimary}]}>Loading products...</Text>
       </View>
     );
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f0f7f0' }}>
-      <View style={styles.headerContainer}>
-        <View style={styles.headerContent}>
-          <View style={styles.headerTitleSection}>
-            <Text style={styles.headerText}>Fresh Products</Text>
-            <Text style={styles.headerSubtext}>Discover quality farm products</Text>
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
+      <LinearGradient
+        colors={[colors.primaryDark, colors.primary]}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
+        style={styles.headerGradient}
+      >
+        <View style={styles.headerContainer}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerTitleSection}>
+              <Text style={styles.headerText}>Fresh Products</Text>
+              <Text style={styles.headerSubtext}>Discover quality farm products</Text>
+            </View>
+            
+            {/* View Mode Toggle */}
+            <View style={styles.viewModeContainer}>
+              <TouchableOpacity
+                style={[
+                  styles.viewModeButton, 
+                  viewMode === 'grouped' && styles.viewModeButtonActive,
+                  {backgroundColor: viewMode === 'grouped' ? '#ffffff' : 'rgba(255,255,255,0.3)'}
+                ]}
+                onPress={() => setViewMode('grouped')}
+              >
+                <Ionicons 
+                  name="list-outline" 
+                  size={18} 
+                  color={viewMode === 'grouped' ? colors.primary : '#ffffff'} 
+                />
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.viewModeButton, 
+                  viewMode === 'grid' && styles.viewModeButtonActive,
+                  {backgroundColor: viewMode === 'grid' ? '#ffffff' : 'rgba(255,255,255,0.3)'}
+                ]}
+                onPress={() => setViewMode('grid')}
+              >
+                <Ionicons 
+                  name="grid-outline" 
+                  size={18} 
+                  color={viewMode === 'grid' ? colors.primary : '#ffffff'} 
+                />
+              </TouchableOpacity>
+            </View>
           </View>
           
-          {/* View Mode Toggle */}
-          <View style={styles.viewModeContainer}>
-            <TouchableOpacity
-              style={[styles.viewModeButton, viewMode === 'grouped' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('grouped')}
-            >
-              <Ionicons name="list-outline" size={18} color={viewMode === 'grouped' ? '#2d5a3d' : '#ffffff'} />
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.viewModeButton, viewMode === 'grid' && styles.viewModeButtonActive]}
-              onPress={() => setViewMode('grid')}
-            >
-              <Ionicons name="grid-outline" size={18} color={viewMode === 'grid' ? '#2d5a3d' : '#ffffff'} />
-            </TouchableOpacity>
-          </View>
-        </View>
-        
-        {/* Search Input */}
-        <View style={styles.searchContainer}>
-          <Ionicons name="search" size={20} color="#a0aec0" style={styles.searchIcon} />
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search products or shops..."
-            placeholderTextColor="#6b8e70"
-            value={searchQuery}
-            onChangeText={setSearchQuery}
-          />
-          {searchQuery.length > 0 && (
-            <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
-              <Ionicons name="close-circle" size={20} color="#6b8e70" />
-            </TouchableOpacity>
-          )}
-        </View>
-        
-        {/* Location Filter Toggle - Compact */}
-        {locationEnabled && (
-          <View style={styles.locationControls}>
-            <TouchableOpacity
-              style={[styles.locationToggle, filterByDistance && styles.locationToggleActive]}
-              onPress={() => setShowDistanceModal(true)}
-            >
-              <Ionicons 
-                name={filterByDistance ? "location" : "location-outline"} 
-                size={18} 
-                color={filterByDistance ? "#fff" : "#4CAF50"} 
-              />
-              <Text style={[styles.locationToggleText, filterByDistance && styles.locationToggleTextActive]}>
-                Filter Nearby Shops({filteredProducts.length})
-              </Text>
-              <Ionicons 
-                name="chevron-down" 
-                size={16} 
-                color={filterByDistance ? "#fff" : "#4CAF50"} 
-                style={{ marginLeft: 4 }}
-              />
-            </TouchableOpacity>
-            
-            {filterByDistance && (
-              <TouchableOpacity
-                style={styles.mapButtonSmall}
-                onPress={() => setShowMap(true)}
-              >
-                <Ionicons name="map-outline" size={18} color="#2d5a3d" />
+          {/* Search Input */}
+          <View style={[styles.searchContainer, {backgroundColor: 'rgba(255,255,255,0.2)'}]}>
+            <Ionicons name="search" size={20} color="#ffffff" style={styles.searchIcon} />
+            <TextInput
+              style={[styles.searchInput, {color: '#ffffff'}]}
+              placeholder="Search products or shops..."
+              placeholderTextColor="rgba(255,255,255,0.7)"
+              value={searchQuery}
+              onChangeText={setSearchQuery}
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity onPress={() => setSearchQuery('')} style={styles.clearButton}>
+                <Ionicons name="close-circle" size={20} color="#ffffff" />
               </TouchableOpacity>
             )}
           </View>
-        )}
-      </View>
+        </View>
+      </LinearGradient>
+      
+      {/* Location Filter Toggle - Outside Header */}
+      {locationEnabled && (
+        <View style={styles.locationControls}>
+          <TouchableOpacity
+            style={[
+              styles.locationToggle, 
+              filterByDistance && styles.locationToggleActive,
+              {
+                backgroundColor: filterByDistance ? colors.primary : colors.cardBackground,
+                borderColor: colors.primary
+              }
+            ]}
+            onPress={() => setShowDistanceModal(true)}
+          >
+            <Ionicons 
+              name={filterByDistance ? "location" : "location-outline"} 
+              size={18} 
+              color={filterByDistance ? "#fff" : colors.primary} 
+            />
+            <Text 
+              style={[
+                styles.locationToggleText, 
+                filterByDistance && styles.locationToggleTextActive,
+                {color: filterByDistance ? "#fff" : colors.primary}
+              ]}
+            >
+              Filter Nearby Shops({filteredProducts.length})
+            </Text>
+            <Ionicons 
+              name="chevron-down" 
+              size={16} 
+              color={filterByDistance ? "#fff" : colors.primary} 
+              style={{ marginLeft: 4 }}
+            />
+          </TouchableOpacity>
+          
+          {filterByDistance && (
+            <TouchableOpacity
+              style={[styles.mapButtonSmall, {backgroundColor: colors.cardBackground, borderColor: colors.primary}]}
+              onPress={() => setShowMap(true)}
+            >
+              <Ionicons name="map-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
       
       {viewMode === 'grouped' ? (
         <SectionList
           sections={groupedProducts}
           keyExtractor={(item) => item.id}
           renderItem={({ item }) => (
-            <View style={styles.productCardHorizontal}>
+            <View style={[styles.productCardHorizontal, {backgroundColor: colors.cardBackground}]}>
               <Link href={{ pathname: '/product/[id]', params: { id: item.id } }} asChild>
                 <TouchableOpacity style={styles.productCardHorizontalContent}>
                   <Image source={{ uri: item.image }} style={styles.productImageHorizontal} />
                   <View style={styles.productInfoHorizontal}>
-                    <Text style={styles.productName}>{item.name}</Text>
+                    <Text style={[styles.productName, {color: colors.textPrimary}]}>{item.name}</Text>
                     <View style={styles.priceRow}>
-                      <Text style={styles.productPrice}>৳{item.price.toFixed(2)}</Text>
-                      <Text style={styles.productUnit}>/{item.unit}</Text>
+                      <Text style={[styles.productPrice, {color: colors.primary}]}>৳{item.price.toFixed(2)}</Text>
+                      <Text style={[styles.productUnit, {color: colors.textSecondary}]}>/{item.unit}</Text>
                     </View>
                     
                     {item.distance !== undefined && (
                       <View style={styles.distanceInfo}>
-                        <Ionicons name="location-outline" size={12} color="#1a3d2e" />
-                        <Text style={styles.distanceText}>
+                        <Ionicons name="location-outline" size={12} color={colors.info} />
+                        <Text style={[styles.distanceText, {color: colors.info}]}>
                           {formatDistance(item.distance)} away
                         </Text>
                       </View>
@@ -399,7 +439,7 @@ export default function ProductsScreen() {
               
               {/* Add to Cart Button */}
               <TouchableOpacity
-                style={styles.addToCartButtonHorizontal}
+                style={[styles.addToCartButtonHorizontal, {backgroundColor: colors.primary}]}
                 onPress={() => handleAddToCart(item)}
                 disabled={addingToCart === item.id}
               >
@@ -413,17 +453,23 @@ export default function ProductsScreen() {
           )}
           renderSectionHeader={({ section }) => {
             // Different left border colors for variety based on shop name
-            const borderColors = ['#2d5a3d', '#4a6b4f', '#1a3d2e', '#3e7b3e', '#225533'];
+            const borderColors = [colors.primary, colors.success, colors.info, colors.accent, colors.secondary];
             const colorIndex = section.shopId.length % borderColors.length;
             const borderColor = borderColors[colorIndex];
             
             return (
-              <View style={[styles.shopHeader, { borderLeftColor: borderColor }]}>
+              <View style={[
+                styles.shopHeader, 
+                { 
+                  borderLeftColor: borderColor,
+                  backgroundColor: colors.cardBackgroundLight
+                }
+              ]}>
                 <View style={styles.shopHeaderLeft}>
                   <Ionicons name="storefront" size={26} color={borderColor} />
                   <View style={styles.shopHeaderInfo}>
-                    <Text style={styles.shopHeaderTitle}>{section.title}</Text>
-                    <Text style={styles.shopHeaderSubtitle}>
+                    <Text style={[styles.shopHeaderTitle, {color: colors.textPrimary}]}>{section.title}</Text>
+                    <Text style={[styles.shopHeaderSubtitle, {color: colors.textSecondary}]}>
                       {section.data.length} product{section.data.length !== 1 ? 's' : ''}
                       {section.shopInfo.distance !== undefined && 
                         ` • ${formatDistance(section.shopInfo.distance)} away`
@@ -449,20 +495,20 @@ export default function ProductsScreen() {
           keyExtractor={(item) => item.id}
           numColumns={2}
           renderItem={({ item }) => (
-            <View style={styles.productCard}>
+            <View style={[styles.productCard, {backgroundColor: colors.cardBackground}]}>
               <Link href={{ pathname: '/product/[id]', params: { id: item.id } }} asChild>
                 <TouchableOpacity style={styles.productCardContent}>
                   <Image source={{ uri: item.image }} style={styles.productImage} />
                   <View style={styles.productInfo}>
-                    <Text style={styles.productName}>{item.name}</Text>
-                    <Text style={styles.productPrice}>৳{item.price.toFixed(2)}</Text>
-                    <Text style={styles.productUnit}>/{item.unit}</Text>
+                    <Text style={[styles.productName, {color: colors.textPrimary}]}>{item.name}</Text>
+                    <Text style={[styles.productPrice, {color: colors.primary}]}>৳{item.price.toFixed(2)}</Text>
+                    <Text style={[styles.productUnit, {color: colors.textSecondary}]}>/{item.unit}</Text>
                     
                     {/* Show shop info and distance */}
                     {item.shopName && (
                       <View style={styles.shopInfo}>
-                        <Ionicons name="storefront-outline" size={12} color="#2d5a3d" />
-                        <Text style={styles.shopName} numberOfLines={1}>
+                        <Ionicons name="storefront-outline" size={12} color={colors.primary} />
+                        <Text style={[styles.shopName, {color: colors.textSecondary}]} numberOfLines={1}>
                           {item.shopName}
                         </Text>
                       </View>
@@ -470,8 +516,8 @@ export default function ProductsScreen() {
                     
                     {item.distance !== undefined && (
                       <View style={styles.distanceInfo}>
-                        <Ionicons name="location-outline" size={12} color="#1a3d2e" />
-                        <Text style={styles.distanceText}>
+                        <Ionicons name="location-outline" size={12} color={colors.info} />
+                        <Text style={[styles.distanceText, {color: colors.info}]}>
                           {formatDistance(item.distance)} away
                         </Text>
                       </View>
@@ -480,7 +526,18 @@ export default function ProductsScreen() {
                 </TouchableOpacity>
               </Link>
               
-              {/* No Add to Cart Button in grid view for cleaner look */}
+              {/* Add to cart button in grid view */}
+              <TouchableOpacity
+                style={[styles.addToCartButton, {backgroundColor: colors.primary}]}
+                onPress={() => handleAddToCart(item)}
+                disabled={addingToCart === item.id}
+              >
+                {addingToCart === item.id ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Ionicons name="cart" size={16} color="#fff" />
+                )}
+              </TouchableOpacity>
             </View>
           )}
           contentContainerStyle={styles.productsContainer}
@@ -533,17 +590,22 @@ export default function ProductsScreen() {
       
       {/* Distance Selection Modal */}
       {showDistanceModal && (
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContainer}>
-            <View style={styles.modalHeader}>
+        <View style={[styles.modalOverlay, {backgroundColor: colors.overlay}]}>
+          <View style={[styles.modalContainer, {backgroundColor: colors.cardBackground}]}>
+            <LinearGradient
+              colors={[colors.primaryLight, colors.primary]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 0}}
+              style={styles.modalHeader}
+            >
               <Text style={styles.modalTitle}>Nearby Shops Filter</Text>
               <TouchableOpacity onPress={() => setShowDistanceModal(false)}>
-                <Ionicons name="close" size={24} color="#2d3748" />
+                <Ionicons name="close" size={24} color="#ffffff" />
               </TouchableOpacity>
-            </View>
+            </LinearGradient>
             
             <View style={styles.modalContent}>
-              <Text style={styles.modalDescription}>
+              <Text style={[styles.modalDescription, {color: colors.textPrimary}]}>
                 Choose maximum distance to find shops near you
               </Text>
               
@@ -558,7 +620,10 @@ export default function ProductsScreen() {
                     key={option.value}
                     style={[
                       styles.distanceOption,
-                      maxDistance === option.value && styles.distanceOptionActive
+                      maxDistance === option.value && styles.distanceOptionActive,
+                      {
+                        backgroundColor: maxDistance === option.value ? colors.primary : colors.cardBackgroundLight,
+                      }
                     ]}
                     onPress={() => {
                       setMaxDistance(option.value);
@@ -568,13 +633,15 @@ export default function ProductsScreen() {
                     <View style={styles.distanceOptionContent}>
                       <Text style={[
                         styles.distanceOptionLabel,
-                        maxDistance === option.value && styles.distanceOptionLabelActive
+                        maxDistance === option.value && styles.distanceOptionLabelActive,
+                        {color: maxDistance === option.value ? "#ffffff" : colors.textPrimary}
                       ]}>
                         {option.label}
                       </Text>
                       <Text style={[
                         styles.distanceOptionDesc,
-                        maxDistance === option.value && styles.distanceOptionDescActive
+                        maxDistance === option.value && styles.distanceOptionDescActive,
+                        {color: maxDistance === option.value ? "rgba(255,255,255,0.8)" : colors.textSecondary}
                       ]}>
                         {option.desc}
                       </Text>
@@ -588,27 +655,21 @@ export default function ProductsScreen() {
               
               <View style={styles.modalActions}>
                 <TouchableOpacity
-                  style={styles.modalActionCancel}
+                  style={[styles.modalActionCancel, {backgroundColor: colors.errorLight}]}
                   onPress={() => {
                     setFilterByDistance(false);
                     setShowDistanceModal(false);
                   }}
                 >
-                  <Text style={styles.modalActionCancelText}>Turn Off Filter</Text>
+                  <Text style={[styles.modalActionCancelText, {color: colors.error}]}>Turn Off Filter</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity
-                  style={styles.modalActionConfirm}
+                  style={[styles.modalActionApply, {backgroundColor: colors.primary}]}
                   onPress={() => setShowDistanceModal(false)}
                 >
-                  <Text style={styles.modalActionConfirmText}>Apply Filter</Text>
+                  <Text style={styles.modalActionApplyText}>Apply Filter</Text>
                 </TouchableOpacity>
-              </View>
-              
-              <View style={styles.resultPreview}>
-                <Text style={styles.resultPreviewText}>
-                  {filteredProducts.length} products found within {maxDistance} km
-                </Text>
               </View>
             </View>
           </View>
@@ -619,31 +680,24 @@ export default function ProductsScreen() {
 }
 
 const styles = StyleSheet.create({
-  loadingContainer: {
+  container: {
     flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
     backgroundColor: '#f0f7f0',
   },
-  loadingText: {
-    fontSize: 16,
-    color: '#2d5a3d',
-    marginTop: 10,
-    fontWeight: '600',
-  },
-  // Enhanced header with darkish green theme
-  headerContainer: {
-    paddingTop: 50,
+  headerGradient: {
+    paddingTop: 40,
     paddingBottom: 16,
-    paddingHorizontal: 20,
-    backgroundColor: '#2d5a3d',
-    borderBottomLeftRadius: 25,
-    borderBottomRightRadius: 25,
-    shadowColor: '#1a3d2e',
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15,
-    shadowRadius: 8,
+    shadowRadius: 12,
     elevation: 8,
+  },
+  headerContainer: {
+    paddingHorizontal: 16,
   },
   headerContent: {
     flexDirection: 'row',
@@ -655,325 +709,128 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   headerText: {
-    fontSize: 26,
-    fontWeight: '800',
+    fontSize: 28,
+    fontWeight: 'bold',
     color: '#ffffff',
-    marginBottom: 4,
-    letterSpacing: 0.5,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   headerSubtext: {
-    fontSize: 15,
-    color: '#a8d5ba',
-    fontWeight: '500',
+    fontSize: 14,
+    color: 'rgba(255, 255, 255, 0.8)',
+    marginTop: 4,
   },
-  // Enhanced search with green theme
+  viewModeContainer: {
+    flexDirection: 'row',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    borderRadius: 12,
+    padding: 4,
+  },
+  viewModeButton: {
+    padding: 8,
+    borderRadius: 8,
+    marginHorizontal: 2,
+  },
+  viewModeButtonActive: {
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
+  },
   searchContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.95)',
-    borderRadius: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    marginBottom: 16,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    shadowColor: '#1a3d2e',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    marginTop: 8,
   },
   searchIcon: {
-    marginRight: 12,
-    color: '#4a6b4f',
+    marginRight: 8,
   },
   searchInput: {
     flex: 1,
     fontSize: 16,
-    color: '#2d5a3d',
-    paddingVertical: 0,
-    fontWeight: '500',
+    height: 40,
   },
   clearButton: {
     padding: 4,
-    marginLeft: 8,
   },
-  // Enhanced location toggle with theme
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f0f7f0',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    textAlign: 'center',
+    color: '#666',
+  },
+  // Location Controls
+  locationControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    marginVertical: 12,
+    gap: 8,
+  },
   locationToggle: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.15)',
     paddingHorizontal: 16,
     paddingVertical: 10,
-    borderRadius: 25,
+    borderRadius: 12,
+    flex: 1,
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-    alignSelf: 'flex-start',
-  },
-  locationToggleText: {
-    color: '#ffffff',
-    fontSize: 14,
-    fontWeight: '600',
-    marginLeft: 6,
-  },
-  locationToggleTextActive: {
-    color: '#2d5a3d',
   },
   locationToggleActive: {
-    backgroundColor: '#ffffff',
-    borderColor: '#ffffff',
-  },
-  compactFilterContainer: {
-    backgroundColor: '#ffffff',
-    marginHorizontal: 16,
-    marginBottom: 8,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 15,
-    shadowColor: '#2d5a3d',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 6,
-    elevation: 3,
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
-  },
-  filterContainer: {
-    backgroundColor: '#ffffff',
-    marginHorizontal: 16,
-    marginVertical: 8,
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderRadius: 18,
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
+    shadowRadius: 3,
+    elevation: 2,
   },
-  filterRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  filterLabel: {
-    fontSize: 16,
-    color: '#2d5a3d',
-    flex: 1,
-    marginLeft: 12,
-    fontWeight: '600',
-  },
-  distanceContainer: {
-    marginTop: 16,
-  },
-  distanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  distanceLabel: {
-    fontSize: 14,
-    color: '#4a6b4f',
-    flex: 1,
-    fontWeight: '500',
-  },
-  mapButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    backgroundColor: '#e8f5e8',
-    borderRadius: 20,
+  locationToggleText: {
     marginLeft: 8,
-    borderWidth: 1,
-    borderColor: '#2d5a3d',
-  },
-  mapButtonText: {
-    fontSize: 12,
-    color: '#2d5a3d',
-    marginLeft: 6,
+    fontSize: 14,
     fontWeight: '600',
   },
-  distanceButtons: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: 8,
+  locationToggleTextActive: {
+    color: '#fff',
   },
-  distanceButton: {
-    paddingHorizontal: 18,
-    paddingVertical: 10,
-    borderRadius: 25,
-    backgroundColor: '#f0f7f0',
+  mapButtonSmall: {
+    padding: 10,
+    borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#c8e6c9',
-    minWidth: 60,
     alignItems: 'center',
+    justifyContent: 'center',
   },
-  distanceButtonActive: {
-    backgroundColor: '#2d5a3d',
-    borderColor: '#2d5a3d',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
-  },
-  distanceButtonText: {
-    fontSize: 13,
-    color: '#4a6b4f',
-    fontWeight: '600',
-  },
-  distanceButtonTextActive: {
-    color: '#ffffff',
-    fontWeight: '700',
-  },
+  // Products List
   productsContainer: {
-    padding: 16,
-    paddingTop: 8,
-  },
-  // Enhanced product cards with green theme
-  productCard: {
-    flex: 1,
-    margin: 6,
-    backgroundColor: '#ffffff',
-    borderRadius: 18,
-    overflow: 'hidden',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.12,
-    shadowRadius: 12,
-    elevation: 8,
-    position: 'relative',
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
-  },
-  productCardContent: {
-    flex: 1,
-  },
-  productImage: {
-    width: '100%',
-    height: 160,
-    resizeMode: 'cover',
-    backgroundColor: '#f0f7f0',
-  },
-  productInfo: {
-    padding: 16,
+    paddingHorizontal: 16,
     paddingBottom: 20,
   },
-  productName: {
-    fontSize: 15,
-    fontWeight: '700',
-    marginBottom: 8,
-    color: '#2d5a3d',
-    lineHeight: 20,
-  },
-  productPrice: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: '#1a3d2e',
-  },
-  productUnit: {
-    fontSize: 13,
-    color: '#6b8e70',
-    marginLeft: 4,
-    marginBottom: 8,
-    fontWeight: '500',
-  },
-  shopInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    backgroundColor: '#e8f5e8',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 12,
-  },
-  shopName: {
-    fontSize: 12,
-    color: '#2d5a3d',
-    marginLeft: 6,
-    flex: 1,
-    fontWeight: '600',
-  },
-  distanceInfo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginTop: 6,
-    backgroundColor: '#f0f7f0',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 10,
-    alignSelf: 'flex-start',
-  },
-  distanceText: {
-    fontSize: 12,
-    color: '#1a3d2e',
-    marginLeft: 4,
-    fontWeight: '700',
-  },
-  addToCartButton: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    backgroundColor: '#2d5a3d',
-    borderRadius: 25,
-    width: 44,
-    height: 44,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
-  },
-  // Enhanced view mode with green theme
-  viewModeContainer: {
-    flexDirection: 'row',
-    backgroundColor: 'rgba(255, 255, 255, 0.2)',
-    borderRadius: 15,
-    padding: 4,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.3)',
-  },
-  viewModeButton: {
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 10,
-    minWidth: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  viewModeButtonActive: {
-    backgroundColor: '#ffffff',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.2,
-    shadowRadius: 4,
-    elevation: 4,
-  },
-  // Enhanced shop header with gradient-like colors
+  // Shop Headers
   shopHeader: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    backgroundColor: '#ffffff',
-    marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 8,
-    borderRadius: 18,
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 5,
-    borderLeftWidth: 4,
-    borderLeftColor: '#4a6b4f',
+    justifyContent: 'space-between',
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    marginTop: 16,
+    marginBottom: 12,
+    borderRadius: 12,
+    borderLeftWidth: 5,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
   },
   shopHeaderLeft: {
     flexDirection: 'row',
@@ -981,254 +838,243 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   shopHeaderInfo: {
-    marginLeft: 16,
+    marginLeft: 12,
     flex: 1,
   },
   shopHeaderTitle: {
-    fontSize: 20,
-    fontWeight: '800',
-    color: '#2d5a3d',
+    fontSize: 16,
+    fontWeight: '700',
     marginBottom: 4,
-    letterSpacing: 0.3,
   },
   shopHeaderSubtitle: {
-    fontSize: 14,
-    color: '#4a6b4f',
-    fontWeight: '600',
+    fontSize: 12,
   },
   shopNavigateButton: {
-    padding: 12,
-    backgroundColor: '#e8f5e8',
-    borderRadius: 25,
+    padding: 8,
+    borderRadius: 8,
     borderWidth: 1,
-    borderColor: '#2d5a3d',
   },
-  // Enhanced horizontal product cards
+  // Product Cards - Horizontal
   productCardHorizontal: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#ffffff',
-    marginHorizontal: 16,
-    marginVertical: 4,
-    borderRadius: 18,
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
-    elevation: 4,
-    position: 'relative',
+    marginBottom: 12,
+    borderRadius: 12,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06,
+    shadowRadius: 4,
+    elevation: 2,
   },
   productCardHorizontalContent: {
     flexDirection: 'row',
     alignItems: 'center',
     flex: 1,
-    paddingRight: 70,
+    padding: 12,
   },
   productImageHorizontal: {
-    width: 90,
-    height: 90,
-    borderRadius: 15,
-    backgroundColor: '#f0f7f0',
-    margin: 16,
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
+    width: 80,
+    height: 80,
+    borderRadius: 8,
+    marginRight: 12,
   },
   productInfoHorizontal: {
     flex: 1,
-    paddingVertical: 16,
-    paddingRight: 16,
+  },
+  addToCartButtonHorizontal: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: '#2d5a3d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  // Product Cards - Grid
+  productCard: {
+    flex: 1,
+    margin: 8,
+    borderRadius: 12,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+    position: 'relative',
+  },
+  productCardContent: {
+    padding: 0,
+  },
+  productImage: {
+    width: '100%',
+    height: 140,
+    borderTopLeftRadius: 12,
+    borderTopRightRadius: 12,
+  },
+  productInfo: {
+    padding: 12,
+  },
+  productName: {
+    fontSize: 14,
+    fontWeight: '600',
+    marginBottom: 8,
   },
   priceRow: {
     flexDirection: 'row',
     alignItems: 'baseline',
-    marginVertical: 6,
   },
-  addToCartButtonHorizontal: {
-    position: 'absolute',
-    right: 16,
-    backgroundColor: '#2d5a3d',
-    borderRadius: 25,
-    width: 48,
-    height: 48,
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 8,
+  productPrice: {
+    fontSize: 16,
+    fontWeight: '700',
   },
-  // Location controls with theme
-  locationControls: {
+  productUnit: {
+    fontSize: 12,
+    marginLeft: 2,
+  },
+  shopInfo: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'space-between',
+    marginTop: 6,
   },
-  mapButtonSmall: {
-    padding: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
-    borderRadius: 25,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.5)',
-    marginLeft: 12,
-    shadowColor: '#2d5a3d',
+  shopName: {
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  distanceInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 6,
+  },
+  distanceText: {
+    fontSize: 11,
+    marginLeft: 4,
+  },
+  addToCartButton: {
+    position: 'absolute',
+    bottom: 12,
+    right: 12,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: '#2d5a3d',
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
     elevation: 3,
   },
-  // Enhanced modal styles with green theme
+  // Modal Styles
   modalOverlay: {
     position: 'absolute',
     top: 0,
     left: 0,
     right: 0,
     bottom: 0,
-    backgroundColor: 'rgba(45, 90, 61, 0.6)',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 1001,
+    zIndex: 1000,
   },
   modalContainer: {
-    backgroundColor: '#ffffff',
-    borderRadius: 24,
-    marginHorizontal: 20,
-    maxHeight: '80%',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 12 },
-    shadowOpacity: 0.3,
-    shadowRadius: 24,
-    elevation: 12,
-    borderWidth: 1,
-    borderColor: '#e8f5e8',
+    width: '90%',
+    maxWidth: 360,
+    borderRadius: 16,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   modalHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: '#e8f5e8',
-    backgroundColor: '#f8fcf9',
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   modalTitle: {
-    fontSize: 22,
-    fontWeight: '800',
-    color: '#2d5a3d',
-    letterSpacing: 0.3,
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#ffffff',
   },
   modalContent: {
-    paddingHorizontal: 24,
-    paddingVertical: 20,
+    padding: 20,
   },
   modalDescription: {
-    fontSize: 16,
-    color: '#4a6b4f',
-    marginBottom: 24,
-    lineHeight: 24,
-    fontWeight: '500',
+    fontSize: 14,
+    marginBottom: 16,
   },
   distanceOptions: {
-    marginBottom: 24,
+    marginBottom: 20,
   },
   distanceOption: {
     flexDirection: 'row',
-    alignItems: 'center',
     justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 18,
-    borderRadius: 16,
-    borderWidth: 2,
-    borderColor: '#e8f5e8',
-    backgroundColor: '#f8fcf9',
-    marginBottom: 12,
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginBottom: 8,
   },
   distanceOptionActive: {
-    backgroundColor: '#2d5a3d',
-    borderColor: '#2d5a3d',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.2,
-    shadowRadius: 8,
-    elevation: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+    elevation: 2,
   },
   distanceOptionContent: {
     flex: 1,
   },
   distanceOptionLabel: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#2d5a3d',
-    marginBottom: 2,
+    fontSize: 16,
+    fontWeight: '600',
+    marginBottom: 4,
   },
   distanceOptionLabelActive: {
-    color: '#ffffff',
+    color: '#fff',
   },
   distanceOptionDesc: {
-    fontSize: 14,
-    color: '#4a6b4f',
-    fontWeight: '500',
+    fontSize: 12,
   },
   distanceOptionDescActive: {
-    color: '#a8d5ba',
+    color: 'rgba(255, 255, 255, 0.8)',
   },
   modalActions: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginTop: 8,
   },
   modalActionCancel: {
     flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
-    backgroundColor: '#f0f7f0',
-    borderWidth: 1,
-    borderColor: '#c8e6c9',
-    marginRight: 8,
+    padding: 14,
+    borderRadius: 12,
     alignItems: 'center',
+    marginRight: 8,
   },
   modalActionCancelText: {
-    fontSize: 16,
     fontWeight: '600',
-    color: '#4a6b4f',
+    fontSize: 14,
   },
-  modalActionConfirm: {
+  modalActionApply: {
     flex: 1,
-    paddingVertical: 16,
-    borderRadius: 14,
-    backgroundColor: '#2d5a3d',
+    padding: 14,
+    borderRadius: 12,
+    alignItems: 'center',
     marginLeft: 8,
-    alignItems: 'center',
-    shadowColor: '#2d5a3d',
-    shadowOffset: { width: 0, height: 3 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
   },
-  modalActionConfirmText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#ffffff',
-  },
-  resultPreview: {
-    backgroundColor: '#e8f5e8',
-    paddingVertical: 14,
-    paddingHorizontal: 18,
-    borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#2d5a3d',
-    alignItems: 'center',
-  },
-  resultPreviewText: {
-    fontSize: 15,
-    fontWeight: '700',
-    color: '#1a3d2e',
+  modalActionApplyText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
   },
 });

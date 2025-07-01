@@ -3,9 +3,12 @@ import { View, Text, StyleSheet, FlatList, ActivityIndicator, TouchableOpacity, 
 import { collection, query, where, getDocs, getFirestore, orderBy, doc, getDoc } from 'firebase/firestore';
 import { app } from '../../config/firebase';
 import { useAuth } from '../../context/AuthContext';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { format } from 'date-fns';
 import Toast from 'react-native-toast-message';
+import { Colors } from '../../constants/Colors';
+import { useColorScheme } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
 
 type OrderItem = {
   id: string;
@@ -41,6 +44,8 @@ export default function OrdersScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const db = getFirestore(app);
+  const colorScheme = useColorScheme();
+  const colors = Colors[colorScheme ?? 'light'];
 
   const fetchShopInfo = async (shopId: string | undefined) => {
     if (!shopId) {
@@ -184,22 +189,22 @@ export default function OrdersScreen() {
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'completed': return '#4CAF50';
-      case 'confirmed': return '#2196F3';
-      case 'processing': return '#FF9800';
-      case 'cancelled': return '#F44336';
-      default: return '#FFC107';
+      case 'completed': return colors.success;
+      case 'confirmed': return colors.info;
+      case 'processing': return colors.warning;
+      case 'cancelled': return colors.error;
+      default: return colors.pending;
     }
   };
 
   const getPaymentStatusColor = (status: string) => {
     switch (status) {
-      case 'success': return '#4CAF50';
-      case 'failed': return '#F44336';
-      case 'cancelled': return '#9E9E9E';
-      case 'cash_on_delivery': return '#FF9800';
-      case 'advance_paid': return '#2196F3';
-      default: return '#FFC107';
+      case 'success': return colors.success;
+      case 'failed': return colors.error;
+      case 'cancelled': return colors.textMuted;
+      case 'cash_on_delivery': return colors.warning;
+      case 'advance_paid': return colors.info;
+      default: return colors.pending;
     }
   };
 
@@ -216,28 +221,33 @@ export default function OrdersScreen() {
 
   if (loading && !refreshing) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#4CAF50" />
+      <View style={[styles.loadingContainer, {backgroundColor: colors.background}]}>
+        <ActivityIndicator size="large" color={colors.primary} />
       </View>
     );
   }
 
   if (error) {
     return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="warning-outline" size={50} color="#ff6b6b" />
-        <Text style={styles.errorText}>{error}</Text>
+      <View style={[styles.emptyContainer, {backgroundColor: colors.background}]}>
+        <LinearGradient
+          colors={[colors.errorLight, colors.error]}
+          style={styles.errorIconContainer}
+        >
+          <Ionicons name="warning-outline" size={50} color="#ffffff" />
+        </LinearGradient>
+        <Text style={[styles.errorText, {color: colors.error}]}>{error}</Text>
         {error.includes('index') && (
-          <Text style={styles.helpText}>
+          <Text style={[styles.helpText, {color: colors.textSecondary}]}>
             Click the link in your console to create the index
           </Text>
         )}
         <TouchableOpacity 
           onPress={handleRefresh}
-          style={styles.refreshButton}
+          style={[styles.refreshButton, {backgroundColor: colors.cardBackground}]}
         >
-          <Ionicons name="refresh" size={20} color="#2e86de" />
-          <Text style={styles.refreshText}>Try Again</Text>
+          <Ionicons name="refresh" size={20} color={colors.info} />
+          <Text style={[styles.refreshText, {color: colors.info}]}>Try Again</Text>
         </TouchableOpacity>
       </View>
     );
@@ -245,37 +255,49 @@ export default function OrdersScreen() {
 
   if (orders.length === 0) {
     return (
-      <View style={styles.emptyContainer}>
-        <Ionicons name="receipt-outline" size={50} color="#ccc" />
-        <Text style={styles.emptyText}>You have no past orders</Text>
+      <View style={[styles.emptyContainer, {backgroundColor: colors.background}]}>
+        <LinearGradient
+          colors={[colors.primaryLight, colors.primary]}
+          style={styles.emptyIconContainer}
+        >
+          <Ionicons name="receipt-outline" size={50} color="#ffffff" />
+        </LinearGradient>
+        <Text style={[styles.emptyText, {color: colors.textPrimary}]}>You have no past orders</Text>
         <TouchableOpacity 
           onPress={handleRefresh}
-          style={styles.refreshButton}
+          style={[styles.refreshButton, {backgroundColor: colors.cardBackground}]}
         >
-          <Ionicons name="refresh" size={20} color="#2e86de" />
-          <Text style={styles.refreshText}>Refresh</Text>
+          <Ionicons name="refresh" size={20} color={colors.info} />
+          <Text style={[styles.refreshText, {color: colors.info}]}>Refresh</Text>
         </TouchableOpacity>
       </View>
     );
   }
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, {backgroundColor: colors.background}]}>
       <Toast />
-      <View style={styles.headerContainer}>
-        <Text style={styles.title}>Your Orders</Text>
-        <TouchableOpacity 
-          style={styles.refreshIconButton}
-          onPress={handleRefresh}
-          disabled={refreshing}
-        >
-          <Ionicons 
-            name="refresh" 
-            size={24} 
-            color={refreshing ? "#ccc" : "#2196F3"} 
-          />
-        </TouchableOpacity>
-      </View>
+      <LinearGradient
+        colors={[colors.primaryDark, colors.primary]}
+        start={{x: 0, y: 0}}
+        end={{x: 1, y: 0}}
+        style={styles.header}
+      >
+        <View style={styles.headerContainer}>
+          <Text style={styles.title}>Your Orders</Text>
+          <TouchableOpacity 
+            style={[styles.refreshIconButton, {backgroundColor: 'rgba(255,255,255,0.2)'}]}
+            onPress={handleRefresh}
+            disabled={refreshing}
+          >
+            <Ionicons 
+              name="refresh" 
+              size={24} 
+              color={refreshing ? "rgba(255,255,255,0.5)" : "#ffffff"} 
+            />
+          </TouchableOpacity>
+        </View>
+      </LinearGradient>
       
       <FlatList
         data={orders}
@@ -285,9 +307,14 @@ export default function OrdersScreen() {
         onRefresh={handleRefresh}
         showsVerticalScrollIndicator={false}
         renderItem={({ item }) => (
-          <View style={styles.orderCard}>
-            {/* Modern Header with Gradient-like Background */}
-            <View style={styles.orderHeader}>
+          <View style={[styles.orderCard, {backgroundColor: colors.cardBackground}]}>
+            {/* Modern Header with Gradient Background */}
+            <LinearGradient
+              colors={[colors.primaryLight, colors.primary]}
+              start={{x: 0, y: 0}}
+              end={{x: 1, y: 1}}
+              style={styles.orderHeader}
+            >
               <View style={styles.orderHeaderLeft}>
                 <Text style={styles.orderId}>#{item.id.substring(0, 8).toUpperCase()}</Text>
                 <Text style={styles.orderDate}>
@@ -299,10 +326,10 @@ export default function OrdersScreen() {
                   <Text style={styles.statusText}>{item.status.replace('_', ' ').toUpperCase()}</Text>
                 </View>
               </View>
-            </View>
+            </LinearGradient>
 
             {/* Payment Status Section */}
-            <View style={styles.paymentSection}>
+            <View style={[styles.paymentSection, {backgroundColor: colors.cardBackgroundLight}]}>
               <View style={styles.paymentRow}>
                 <Ionicons 
                   name={getPaymentStatusIcon(item.paymentStatus || 'pending')} 
@@ -319,49 +346,49 @@ export default function OrdersScreen() {
                 <Ionicons 
                   name={item.paymentMethod === 'online_payment' ? 'card-outline' : 'cash-outline'} 
                   size={16} 
-                  color="#666" 
+                  color={colors.textSecondary} 
                 />
-                <Text style={styles.paymentMethodText}>
+                <Text style={[styles.paymentMethodText, {color: colors.textSecondary}]}>
                   {item.paymentMethod === 'online_payment' ? 'Online Payment' : 'Cash on Delivery'}
                 </Text>
               </View>
 
               {/* Advance Payment Breakdown for COD orders */}
               {item.paymentMethod === 'cash_on_delivery' && item.paymentStatus === 'advance_paid' && (
-                <View style={styles.advancePaymentContainer}>
+                <View style={[styles.advancePaymentContainer, {backgroundColor: colors.infoLight, borderColor: colors.info}]}>
                   <View style={styles.advancePaymentHeader}>
-                    <Ionicons name="card" size={16} color="#2196F3" />
-                    <Text style={styles.advancePaymentTitle}>Payment Breakdown</Text>
+                    <Ionicons name="card" size={16} color={colors.info} />
+                    <Text style={[styles.advancePaymentTitle, {color: colors.info}]}>Payment Breakdown</Text>
                   </View>
                   
                   <View style={styles.paymentBreakdownRow}>
-                    <Text style={styles.breakdownLabel}>Advance Paid:</Text>
-                    <Text style={styles.breakdownAmountPaid}>৳{(item.advancePaymentAmount || 0).toFixed(2)}</Text>
+                    <Text style={[styles.breakdownLabel, {color: colors.textSecondary}]}>Advance Paid:</Text>
+                    <Text style={[styles.breakdownAmountPaid, {color: colors.success}]}>৳{(item.advancePaymentAmount || 0).toFixed(2)}</Text>
                   </View>
                   
                   <View style={styles.paymentBreakdownRow}>
-                    <Text style={styles.breakdownLabel}>Remaining (COD):</Text>
-                    <Text style={styles.breakdownAmountRemaining}>৳{(item.remainingAmount || 0).toFixed(2)}</Text>
+                    <Text style={[styles.breakdownLabel, {color: colors.textSecondary}]}>Remaining (COD):</Text>
+                    <Text style={[styles.breakdownAmountRemaining, {color: colors.warning}]}>৳{(item.remainingAmount || 0).toFixed(2)}</Text>
                   </View>
                   
                   <View style={[styles.paymentBreakdownRow, styles.totalRow]}>
-                    <Text style={styles.breakdownTotalLabel}>Total Order:</Text>
-                    <Text style={styles.breakdownTotalAmount}>৳{item.total.toFixed(2)}</Text>
+                    <Text style={[styles.breakdownTotalLabel, {color: colors.textPrimary}]}>Total Order:</Text>
+                    <Text style={[styles.breakdownTotalAmount, {color: colors.primary}]}>৳{item.total.toFixed(2)}</Text>
                   </View>
                 </View>
               )}
 
               {/* Regular COD Order (No Advance Payment) */}
               {item.paymentMethod === 'cash_on_delivery' && item.paymentStatus === 'cash_on_delivery' && (
-                <View style={styles.codPaymentContainer}>
+                <View style={[styles.codPaymentContainer, {backgroundColor: colors.warningLight, borderColor: colors.warning}]}>
                   <View style={styles.codPaymentHeader}>
-                    <Ionicons name="cash" size={16} color="#FF9800" />
-                    <Text style={styles.codPaymentTitle}>Payment Due on Delivery</Text>
+                    <Ionicons name="cash" size={16} color={colors.warning} />
+                    <Text style={[styles.codPaymentTitle, {color: colors.warning}]}>Payment Due on Delivery</Text>
                   </View>
                   
                   <View style={styles.paymentBreakdownRow}>
-                    <Text style={styles.breakdownLabel}>Amount to Pay on Delivery:</Text>
-                    <Text style={styles.codAmountDue}>৳{item.total.toFixed(2)}</Text>
+                    <Text style={[styles.breakdownLabel, {color: colors.textSecondary}]}>Amount to Pay on Delivery:</Text>
+                    <Text style={[styles.codAmountDue, {color: colors.warning}]}>৳{item.total.toFixed(2)}</Text>
                   </View>
                 </View>
               )}
@@ -369,39 +396,39 @@ export default function OrdersScreen() {
 
             {/* Items Section with Modern Cards */}
             <View style={styles.itemsSection}>
-              <Text style={styles.sectionTitle}>Items ({item.items.length})</Text>
+              <Text style={[styles.sectionTitle, {color: colors.textPrimary}]}>Items ({item.items.length})</Text>
               {item.items.map((product, index) => (
-                <View key={`${product.id}-${index}`} style={styles.itemCard}>
+                <View key={`${product.id}-${index}`} style={[styles.itemCard, {backgroundColor: colors.cardBackgroundLight}]}>
                   <View style={styles.itemImageContainer}>
                     <Image 
                       source={{ uri: product.image }} 
                       style={styles.productImage}
                       defaultSource={{ uri: 'https://via.placeholder.com/60x60/e0e0e0/666?text=IMG' }}
                     />
-                    <View style={styles.quantityBadge}>
+                    <View style={[styles.quantityBadge, {backgroundColor: colors.info}]}>
                       <Text style={styles.quantityText}>{product.quantity}</Text>
                     </View>
                   </View>
                   
                   <View style={styles.itemDetails}>
-                    <Text style={styles.itemName} numberOfLines={2}>
+                    <Text style={[styles.itemName, {color: colors.textPrimary}]} numberOfLines={2}>
                       {product.name}
                     </Text>
-                    <Text style={styles.itemUnit}>per {product.unit}</Text>
+                    <Text style={[styles.itemUnit, {color: colors.textSecondary}]}>per {product.unit}</Text>
                     
                     <View style={styles.shopInfoContainer}>
-                      <View style={styles.shopTag}>
-                        <Ionicons name="storefront" size={12} color="#4CAF50" />
-                        <Text style={styles.shopTagText}>{product.shopName}</Text>
+                      <View style={[styles.shopTag, {backgroundColor: colors.successLight}]}>
+                        <Ionicons name="storefront" size={12} color={colors.success} />
+                        <Text style={[styles.shopTagText, {color: colors.success}]}>{product.shopName}</Text>
                       </View>
                     </View>
                   </View>
                   
                   <View style={styles.itemPriceContainer}>
-                    <Text style={styles.itemPrice}>
+                    <Text style={[styles.itemPrice, {color: colors.primary}]}>
                       ৳{(product.price * product.quantity).toFixed(2)}
                     </Text>
-                    <Text style={styles.itemUnitPrice}>
+                    <Text style={[styles.itemUnitPrice, {color: colors.textSecondary}]}>
                       ৳{product.price.toFixed(2)} each
                     </Text>
                   </View>
@@ -409,16 +436,19 @@ export default function OrdersScreen() {
               ))}
             </View>
 
-            {/* Modern Footer */}
-            <View style={styles.orderFooter}>
+            {/* Modern Footer with Gradients */}
+            <LinearGradient
+              colors={[colors.cardBackgroundLight, colors.cardBackground]}
+              style={styles.orderFooter}
+            >
               <View style={styles.totalSection}>
-                <Text style={styles.totalLabel}>Total Amount</Text>
-                <Text style={styles.totalAmount}>৳{item.total.toFixed(2)}</Text>
+                <Text style={[styles.totalLabel, {color: colors.textSecondary}]}>Total Amount</Text>
+                <Text style={[styles.totalAmount, {color: colors.primary}]}>৳{item.total.toFixed(2)}</Text>
               </View>
               
               <View style={styles.actionSection}>
                 <TouchableOpacity 
-                  style={styles.locationButton}
+                  style={[styles.locationButton, {backgroundColor: colors.infoLight}]}
                   onPress={() => {
                     let addressInfo = item.deliveryAddress;
                     if (item.deliveryLocation && item.deliveryLocation.latitude) {
@@ -432,12 +462,12 @@ export default function OrdersScreen() {
                     );
                   }}
                 >
-                  <Ionicons name="location" size={16} color="#2196F3" />
-                  <Text style={styles.locationButtonText}>Location</Text>
+                  <Ionicons name="location" size={16} color={colors.info} />
+                  <Text style={[styles.locationButtonText, {color: colors.info}]}>Location</Text>
                 </TouchableOpacity>
                 
                 <TouchableOpacity 
-                  style={styles.detailsButton}
+                  style={[styles.detailsButton, {backgroundColor: colors.warningLight}]}
                   onPress={() => {
                     Alert.alert(
                       'Order Details',
@@ -445,11 +475,11 @@ export default function OrdersScreen() {
                     );
                   }}
                 >
-                  <Ionicons name="information-circle" size={16} color="#FF9800" />
-                  <Text style={styles.detailsButtonText}>Details</Text>
+                  <Ionicons name="information-circle" size={16} color={colors.warning} />
+                  <Text style={[styles.detailsButtonText, {color: colors.warning}]}>Details</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            </LinearGradient>
           </View>
         )}
       />
@@ -460,39 +490,78 @@ export default function OrdersScreen() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#f0f7f0',
+  },
+  header: {
+    paddingTop: 40,
+    paddingBottom: 16,
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    marginBottom: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 8,
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
   },
   loadingContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#f0f7f0',
   },
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#f5f7fa',
+    backgroundColor: '#f0f7f0',
+  },
+  emptyIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
+  },
+  errorIconContainer: {
+    width: 100,
+    height: 100,
+    borderRadius: 50,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 8,
   },
   emptyText: {
     fontSize: 18,
-    color: '#666',
     marginTop: 16,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   errorText: {
     fontSize: 16,
-    color: '#ff6b6b',
     marginTop: 16,
     textAlign: 'center',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   helpText: {
     fontSize: 14,
-    color: '#666',
     marginTop: 8,
     textAlign: 'center',
   },
@@ -501,7 +570,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginTop: 20,
     padding: 12,
-    backgroundColor: '#fff',
     borderRadius: 12,
     elevation: 2,
     shadowOffset: { width: 0, height: 2 },
@@ -509,32 +577,24 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
   },
   refreshText: {
-    color: '#2e86de',
     marginLeft: 8,
     fontWeight: '600',
   },
   title: {
     fontSize: 28,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#ffffff',
     flex: 1,
-  },
-  headerContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 24,
-    paddingHorizontal: 4,
   },
   refreshIconButton: {
     padding: 8,
     borderRadius: 8,
-    backgroundColor: '#f0f8ff',
   },
   listContent: {
+    paddingHorizontal: 16,
     paddingBottom: 20,
   },
   orderCard: {
-    backgroundColor: '#fff',
     borderRadius: 16,
     marginBottom: 20,
     shadowColor: '#000',
@@ -549,9 +609,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#f8f9fa',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e9ecef',
   },
   orderHeaderLeft: {
     flex: 1,
@@ -562,8 +619,11 @@ const styles = StyleSheet.create({
   orderId: {
     fontSize: 18,
     fontWeight: 'bold',
-    color: '#1a1a1a',
+    color: '#ffffff',
     marginBottom: 4,
+    textShadowColor: 'rgba(0, 0, 0, 0.2)',
+    textShadowOffset: { width: 1, height: 1 },
+    textShadowRadius: 2,
   },
   statusBadge: {
     paddingHorizontal: 12,
@@ -579,14 +639,13 @@ const styles = StyleSheet.create({
   },
   orderDate: {
     fontSize: 14,
-    color: '#666',
+    color: 'rgba(255, 255, 255, 0.8)',
     fontWeight: '500',
   },
   paymentSection: {
     padding: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#f0f0f0',
-    backgroundColor: '#fafbfc',
+    borderBottomColor: 'rgba(0, 0, 0, 0.05)',
   },
   paymentRow: {
     flexDirection: 'row',
@@ -604,7 +663,6 @@ const styles = StyleSheet.create({
   },
   paymentMethodText: {
     fontSize: 12,
-    color: '#666',
     marginLeft: 6,
     fontStyle: 'italic',
   },
@@ -614,13 +672,11 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 12,
   },
   itemCard: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#f8f9fa',
     borderRadius: 12,
     padding: 12,
     marginBottom: 8,
@@ -633,13 +689,11 @@ const styles = StyleSheet.create({
     width: 60,
     height: 60,
     borderRadius: 8,
-    backgroundColor: '#e9ecef',
   },
   quantityBadge: {
     position: 'absolute',
     top: -6,
     right: -6,
-    backgroundColor: '#2196F3',
     borderRadius: 10,
     minWidth: 20,
     height: 20,
@@ -657,12 +711,10 @@ const styles = StyleSheet.create({
   itemName: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#333',
     marginBottom: 4,
   },
   itemUnit: {
     fontSize: 12,
-    color: '#666',
     marginBottom: 6,
   },
   shopInfoContainer: {
@@ -671,7 +723,6 @@ const styles = StyleSheet.create({
   shopTag: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e8f5e8',
     paddingHorizontal: 8,
     paddingVertical: 4,
     borderRadius: 8,
@@ -679,7 +730,6 @@ const styles = StyleSheet.create({
   },
   shopTagText: {
     fontSize: 11,
-    color: '#4CAF50',
     marginLeft: 4,
     fontWeight: '600',
   },
@@ -689,11 +739,9 @@ const styles = StyleSheet.create({
   itemPrice: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#2e86de',
   },
   itemUnitPrice: {
     fontSize: 12,
-    color: '#666',
     marginTop: 2,
   },
   orderFooter: {
@@ -701,22 +749,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     padding: 20,
-    backgroundColor: '#f8f9fa',
     borderTopWidth: 1,
-    borderTopColor: '#e9ecef',
+    borderTopColor: 'rgba(0, 0, 0, 0.05)',
   },
   totalSection: {
     flex: 1,
   },
   totalLabel: {
     fontSize: 14,
-    color: '#666',
     marginBottom: 4,
   },
   totalAmount: {
     fontSize: 20,
     fontWeight: 'bold',
-    color: '#2e86de',
   },
   actionSection: {
     flexDirection: 'row',
@@ -725,70 +770,33 @@ const styles = StyleSheet.create({
   locationButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#e3f2fd',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   locationButtonText: {
     fontSize: 12,
-    color: '#2196F3',
     marginLeft: 4,
     fontWeight: '600',
   },
   detailsButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#fff3e0',
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderRadius: 8,
   },
   detailsButtonText: {
     fontSize: 12,
-    color: '#FF9800',
     marginLeft: 4,
     fontWeight: '600',
   },
-  // Legacy styles for compatibility
-  itemContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 12,
-  },
-  shopInfoRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 2,
-  },
-  shopInfoText: {
-    fontSize: 12,
-    color: '#666',
-    marginLeft: 4,
-  },
-  totalText: {
-    fontSize: 16,
-    fontWeight: 'bold',
-    color: '#2e86de',
-  },
-  addressButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    maxWidth: '60%',
-  },
-  addressText: {
-    fontSize: 14,
-    color: '#2e86de',
-    marginLeft: 4,
-  },
-  // Advance Payment Styles
+  // Advanced Payment Styles
   advancePaymentContainer: {
-    backgroundColor: '#f0f8ff',
     borderRadius: 8,
     padding: 12,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#2196F3',
   },
   advancePaymentHeader: {
     flexDirection: 'row',
@@ -798,7 +806,6 @@ const styles = StyleSheet.create({
   advancePaymentTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#2196F3',
     marginLeft: 6,
   },
   paymentBreakdownRow: {
@@ -808,42 +815,35 @@ const styles = StyleSheet.create({
   },
   breakdownLabel: {
     fontSize: 13,
-    color: '#666',
   },
   breakdownAmountPaid: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#4CAF50',
   },
   breakdownAmountRemaining: {
     fontSize: 13,
     fontWeight: '600',
-    color: '#FF9800',
   },
   totalRow: {
     borderTopWidth: 1,
-    borderTopColor: '#e0e0e0',
+    borderTopColor: 'rgba(0, 0, 0, 0.1)',
     paddingTop: 6,
     marginTop: 6,
   },
   breakdownTotalLabel: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#333',
   },
   breakdownTotalAmount: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#2e86de',
   },
   // COD Payment Styles
   codPaymentContainer: {
-    backgroundColor: '#fff8e1',
     borderRadius: 8,
     padding: 12,
     marginTop: 12,
     borderWidth: 1,
-    borderColor: '#FF9800',
   },
   codPaymentHeader: {
     flexDirection: 'row',
@@ -853,12 +853,10 @@ const styles = StyleSheet.create({
   codPaymentTitle: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FF9800',
     marginLeft: 6,
   },
   codAmountDue: {
     fontSize: 14,
     fontWeight: 'bold',
-    color: '#FF9800',
   },
 });

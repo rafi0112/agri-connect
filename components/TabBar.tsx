@@ -1,15 +1,20 @@
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, useColorScheme } from 'react-native';
 import React from 'react';
 import { AntDesign, Feather } from '@expo/vector-icons';
 import TabBarButton from './TabBarButton';
-
+import { Colors } from '../constants/Colors';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 
 const TabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
-	const primaryColor = '#50C878';
-	const greyColor = '#737373';
+	const colorScheme = useColorScheme();
+	const colors = Colors[colorScheme ?? 'light'];
+	
 	return (
-		<View style={styles.tabbar}>
+		<View style={[styles.tabbar, {
+			backgroundColor: colors.tabBar,
+			shadowColor: colors.shadowColor,
+			borderColor: colors.border,
+		}]}>
 			{state.routes.map((route, index) => {
 				const { options } = descriptors[route.key];
 				const label =
@@ -52,7 +57,7 @@ const TabBar = ({ state, descriptors, navigation }: BottomTabBarProps) => {
 						routeName={
 							route.name as 'index' | 'products' | 'cart' | 'orders' | 'profile'
 						}
-						color={isFocused ? primaryColor : greyColor}
+						color={isFocused ? colors.primary : colors.tabIconDefault}
 						label={typeof label === 'string' ? label : ''}
 					/>
 				);
@@ -68,15 +73,15 @@ const styles = StyleSheet.create({
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
-		backgroundColor: '#f0f4f8', // Match the home page background color
 		marginHorizontal: 20,
 		paddingVertical: 15,
-		borderRadius: 25,
+		borderRadius: 30,
 		borderCurve: 'continuous',
-		shadowColor: 'black',
-		shadowOffset: { width: 0, height: 10 },
-		shadowRadius: 10,
-		shadowOpacity: 0.1,
+		borderWidth: 0.5,
+		shadowOffset: { width: 0, height: 4 },
+		shadowRadius: 15,
+		shadowOpacity: 0.2,
+		elevation: 5,
 	},
 	tabbarItem: {
 		flex: 1,

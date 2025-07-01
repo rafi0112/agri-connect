@@ -29,6 +29,7 @@ type Product = {
 	shopId: string;
 	unit: string;
 	type: string;
+	likes?: number;
 };
 
 type WeatherData = {
@@ -105,9 +106,13 @@ export default function HomeScreen() {
 						shopId: data.shopId || '',
 						unit: data.unit || '',
 						type: productType,
+						likes: data.likes || 0, // Include likes data
 					});
 					uniqueCategories.add(productType);
 				});
+
+				// Sort products by likes in descending order
+				const sortedProducts = productsData.sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
 				// Create category objects with icons
 				const categoryList: Category[] = Array.from(uniqueCategories).map(
@@ -117,8 +122,8 @@ export default function HomeScreen() {
 					})
 				);
 
-				setProducts(productsData);
-				setFilteredProducts(productsData);
+				setProducts(sortedProducts);
+				setFilteredProducts(sortedProducts);
 				setCategories(categoryList);
 			} catch (error) {
 				console.error('Error fetching products:', error);
@@ -172,6 +177,9 @@ export default function HomeScreen() {
 				product.name.toLowerCase().includes(searchQuery.toLowerCase())
 			);
 		}
+
+		// Ensure products are sorted by likes even after filtering
+		filtered = filtered.sort((a, b) => (b.likes || 0) - (a.likes || 0));
 
 		setFilteredProducts(filtered);
 	}, [searchQuery, products, selectedCategory]);
@@ -284,12 +292,14 @@ export default function HomeScreen() {
 						onChangeText={setSearchQuery}
 					/>
 				</View>
-			</View>
-
-			{/* --- MODERN CATEGORY SECTION --- */}
+			</View>				{/* --- MODERN CATEGORY SECTION --- */}
 			<View style={styles.sectionContainer}>
 				<View style={styles.sectionTitleRow}>
 					<Text style={styles.sectionTitle}>Categories</Text>
+					<View style={styles.sortIndicator}>
+						<Ionicons name="heart" size={14} color="#e91e63" />
+						<Text style={styles.sortText}>Top liked first</Text>
+					</View>
 				</View>
 				<FlatList
 					data={categories}
@@ -325,7 +335,10 @@ export default function HomeScreen() {
 			{/* --- MODERN FEATURED SECTION WITH GRID/LIST TOGGLE --- */}
 			<View style={styles.sectionContainer}>
 				<View style={styles.sectionTitleRow}>
-					<Text style={styles.sectionTitle}>Featured Products</Text>
+					<View style={styles.titleWithSubtitle}>
+						<Text style={styles.sectionTitle}>Featured Products</Text>
+						<Text style={styles.sectionSubtitle}>Sorted by popularity</Text>
+					</View>
 					<View style={styles.toggleRow}>
 						<TouchableOpacity
 							onPress={() => setViewMode('grid')}
@@ -387,13 +400,21 @@ export default function HomeScreen() {
 										>
 											{item.name}
 										</Text>
-										<View style={styles.featuredPriceRowModern}>
-											<Text style={styles.featuredPriceModern}>
-												৳{item.price.toFixed(2)}
-											</Text>
-											<Text style={styles.featuredUnitModern}>
-												/{item.unit}
-											</Text>
+										<View style={styles.featuredMetaRow}>
+											<View style={styles.featuredPriceRowModern}>
+												<Text style={styles.featuredPriceModern}>
+													৳{item.price.toFixed(2)}
+												</Text>
+												<Text style={styles.featuredUnitModern}>
+													/{item.unit}
+												</Text>
+											</View>
+											{item.likes !== undefined && item.likes > 0 && (
+												<View style={styles.likesContainer}>
+													<Ionicons name="heart" size={12} color="#e91e63" />
+													<Text style={styles.likesCount}>{item.likes}</Text>
+												</View>
+											)}
 										</View>
 									</View>
 								</TouchableOpacity>
@@ -427,13 +448,21 @@ export default function HomeScreen() {
 										>
 											{item.name}
 										</Text>
-										<View style={styles.featuredPriceRowModern}>
-											<Text style={styles.featuredPriceModern}>
-												৳{item.price.toFixed(2)}
-											</Text>
-											<Text style={styles.featuredUnitModern}>
-												/{item.unit}
-											</Text>
+										<View style={styles.featuredMetaRow}>
+											<View style={styles.featuredPriceRowModern}>
+												<Text style={styles.featuredPriceModern}>
+													৳{item.price.toFixed(2)}
+												</Text>
+												<Text style={styles.featuredUnitModern}>
+													/{item.unit}
+												</Text>
+											</View>
+											{item.likes !== undefined && item.likes > 0 && (
+												<View style={styles.likesContainer}>
+													<Ionicons name="heart" size={12} color="#e91e63" />
+													<Text style={styles.likesCount}>{item.likes}</Text>
+												</View>
+											)}
 										</View>
 									</View>
 								</TouchableOpacity>
@@ -666,7 +695,16 @@ const styles = StyleSheet.create({
 		fontSize: 24,
 		fontWeight: 'bold',
 		color: '#333',
-		marginBottom: 12,
+	},
+
+	sectionSubtitle: {
+		fontSize: 12,
+		fontWeight: '500',
+		color: '#4a6b4f',
+	},
+
+	titleWithSubtitle: {
+		flex: 1,
 	},
 
 	sectionTitleRow: {
@@ -690,6 +728,24 @@ const styles = StyleSheet.create({
 
 	toggleBtnActive: {
 		backgroundColor: '#15803d', // slightly lighter dark green
+	},
+
+	sortIndicator: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#ffebee',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
+		borderWidth: 1,
+		borderColor: '#fecdd3',
+	},
+
+	sortText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#e91e63',
+		marginLeft: 4,
 	},
 
 	// Enhanced categories main container with background effects
@@ -805,6 +861,12 @@ const styles = StyleSheet.create({
 		marginBottom: 6,
 	},
 
+	featuredMetaRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+	},
+
 	featuredPriceRowModern: {
 		flexDirection: 'row',
 		alignItems: 'baseline',
@@ -820,6 +882,22 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		color: '#15803d', // green
 		marginLeft: 4,
+	},
+
+	likesContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: '#ffebee',
+		paddingHorizontal: 6,
+		paddingVertical: 2,
+		borderRadius: 8,
+	},
+
+	likesCount: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#e91e63',
+		marginLeft: 2,
 	},
 
 	featuredList: {

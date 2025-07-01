@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import {
 	View,
 	Text,
@@ -14,6 +14,7 @@ import {
 	Platform,
 	Dimensions,
 	StatusBar,
+	Animated,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -86,6 +87,41 @@ export default function HomeScreen() {
 	const colors = Colors[colorScheme ?? 'light'];
 
 	const OPENWEATHER_API_KEY = 'd734f951c52155a9771143721b7eb908';
+
+// Animated Product Card Component
+const AnimatedProductCard = ({ children, index }) => {
+	const fadeAnim = useRef(new Animated.Value(0)).current;
+	const translateY = useRef(new Animated.Value(50)).current;
+
+	useEffect(() => {
+		Animated.parallel([
+			Animated.timing(fadeAnim, {
+				toValue: 1,
+				duration: 500,
+				delay: index * 100,
+				useNativeDriver: true,
+			}),
+			Animated.timing(translateY, {
+				toValue: 0,
+				duration: 500,
+				delay: index * 100,
+				useNativeDriver: true,
+			})
+		]).start();
+	}, []);
+
+	return (
+		<Animated.View
+			style={{
+				opacity: fadeAnim,
+				transform: [{ translateY }],
+				marginBottom: 16,
+			}}
+		>
+			{children}
+		</Animated.View>
+	);
+};
 
 // Updated the getCategoryIcon function with a cleaner and more consistent style
 	const getCategoryIcon = (categoryName: string): { icon: JSX.Element, color: string } => {
@@ -516,83 +552,92 @@ export default function HomeScreen() {
 							numColumns={1}
 							keyExtractor={(item) => item.id}
 							contentContainerStyle={styles.productsGrid}
-							renderItem={({ item }) => (
-								<Link
-									href={{ pathname: '/product/[id]', params: { id: item.id } }}
-									asChild
-								>
-									<TouchableOpacity
-										style={[styles.modernProductCard, {backgroundColor: colors.card, borderColor: colors.border}]}
-										activeOpacity={0.7}
+							renderItem={({ item, index }) => (
+								<AnimatedProductCard index={index}>
+									<Link
+										href={{ pathname: '/product/[id]', params: { id: item.id } }}
+										asChild
 									>
-										<View style={styles.modernProductImageContainer}>
-											<Image
-												source={{ uri: item.image }}
-												style={styles.modernProductImage}
-											/>
-											
-											{item.likes !== undefined && item.likes > 0 && (
-												<View style={[styles.modernLikeBadge, {backgroundColor: colors.likeButton + 'E6'}]}>
-													<Ionicons name="heart" size={12} color="#FFF" />
-													<Text style={styles.likeCount}>{item.likes}</Text>
-												</View>
-											)}
-											
-											<View style={[styles.modernProductTypeBadge, {backgroundColor: colors.primaryDark + 'E6'}]}>
-												<Text style={styles.modernProductTypeText}>
-													{item.type}
-												</Text>
-											</View>
-											
-											{item.stock !== undefined && item.stock <= 5 && (
-												<View style={[
-													styles.modernStockBadge, 
-													{
-														backgroundColor: item.stock === 0 
-															? colors.error + 'E6' 
-															: colors.warning + 'E6'
-													}
-												]}>
-													<Text style={styles.stockText}>
-														{item.stock === 0 ? 'Out of stock' : `Only ${item.stock} left`}
+										<TouchableOpacity
+											style={[styles.modernProductCard, {
+												backgroundColor: colorScheme === 'dark' ? colors.cardAlt : '#FFFFFF',
+												borderColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : '#E2E8F0'
+											}]}
+											activeOpacity={0.7}
+										>
+											<View style={styles.modernProductImageContainer}>
+												<Image
+													source={{ uri: item.image }}
+													style={styles.modernProductImage}
+												/>
+												
+												{item.likes !== undefined && item.likes > 0 && (
+													<View style={[styles.modernLikeBadge, {backgroundColor: colors.likeButton + 'E6'}]}>
+														<Ionicons name="heart" size={12} color="#FFF" />
+														<Text style={styles.likeCount}>{item.likes}</Text>
+													</View>
+												)}
+												
+												<View style={[styles.modernProductTypeBadge, {backgroundColor: colors.primaryDark + 'E6'}]}>
+													<Text style={styles.modernProductTypeText}>
+														{item.type}
 													</Text>
 												</View>
-											)}
-										</View>
-										
-										<View style={styles.modernProductContent}>
-											<Text
-												style={[styles.modernProductName, {color: colors.text}]}
-												numberOfLines={2}
-											>
-												{item.name}
-											</Text>
-											
-											<View style={styles.priceContainer}>
-												<Text style={[styles.modernProductPrice, {color: colors.success}]}>
-													৳{item.price.toFixed(2)}
-												</Text>
-												<Text style={[styles.modernProductUnit, {color: colors.textSecondary}]}>
-													/{item.unit}
-												</Text>
-											</View>
-											
-											<View style={styles.shopInfoContainer}>
-												{item.shopId && (
-													<View style={[styles.modernShopInfo, {backgroundColor: colorScheme === 'dark' ? colors.cardAlt : colors.cardBackgroundLight}]}>
-														<Ionicons name="storefront-outline" size={16} color={colors.primary} />
-														<Text style={[styles.modernProductShop, {color: colors.textSecondary}]} numberOfLines={1}>
-															{item.shopName || "Farmer's Market"}
+												
+												{item.stock !== undefined && item.stock <= 5 && (
+													<View style={[
+														styles.modernStockBadge, 
+														{
+															backgroundColor: item.stock === 0 
+																? colors.error + 'E6' 
+																: colors.warning + 'E6'
+														}
+													]}>
+														<Text style={styles.stockText}>
+															{item.stock === 0 ? 'Out of stock' : `Only ${item.stock} left`}
 														</Text>
 													</View>
 												)}
-												<TouchableOpacity style={[styles.modernAddToCartButton, {backgroundColor: colors.primary}]}>
-													<Ionicons name="cart-outline" size={18} color="#FFFFFF" />
-												</TouchableOpacity>
 											</View>
-										</View>
-									</TouchableOpacity>
-								</Link>
+											
+											<View style={styles.modernProductContent}>
+												<View style={styles.modernProductHeader}>
+													<Text
+														style={[styles.modernProductName, {color: colors.text}]}
+														numberOfLines={1}
+													>
+														{item.name}
+													</Text>
+													
+													<View style={styles.priceContainer}>
+														<Text style={[styles.modernProductPrice, {color: colors.success}]}>
+															৳{item.price.toFixed(2)}
+														</Text>
+														<Text style={[styles.modernProductUnit, {color: colors.textSecondary}]}>
+															/{item.unit}
+														</Text>
+													</View>
+												</View>
+												
+												<View style={styles.shopInfoContainer}>
+													{item.shopId && (
+														<View style={[styles.modernShopInfo, {
+														backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.04)'
+													}]}>
+															<Ionicons name="storefront-outline" size={16} color={colors.primary} />
+															<Text style={[styles.modernProductShop, {color: colors.textSecondary}]} numberOfLines={1}>
+																{item.shopName || "Farmer's Market"}
+															</Text>
+														</View>
+													)}
+													<TouchableOpacity style={[styles.modernAddToCartButton, {backgroundColor: colors.primary}]}>
+														<Ionicons name="cart-outline" size={18} color="#FFFFFF" />
+													</TouchableOpacity>
+												</View>
+											</View>
+										</TouchableOpacity>
+									</Link>
+								</AnimatedProductCard>
 							)}
 							scrollEnabled={false}
 						/>
@@ -838,7 +883,8 @@ const styles = StyleSheet.create({
 	
 	// Products styles
 	productsGrid: {
-		paddingVertical: 8,
+		paddingVertical: 16,
+		paddingHorizontal: 0,
 	},
 	productsList: {
 		paddingVertical: 8,
@@ -938,7 +984,7 @@ const styles = StyleSheet.create({
 	priceContainer: {
 		flexDirection: 'row',
 		alignItems: 'baseline',
-		marginVertical: 6,
+		justifyContent: 'flex-end',
 	},
 	productPrice: {
 		fontSize: 20,
@@ -1119,21 +1165,22 @@ const styles = StyleSheet.create({
 	
 	// Modern Card Styles
 	modernProductCard: {
-		marginVertical: 10,
-		borderRadius: 16,
+		marginVertical: 16,
+		borderRadius: 24,
 		backgroundColor: '#FFFFFF',
 		overflow: 'hidden',
 		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 6 },
+		shadowOffset: { width: 0, height: 8 },
 		shadowOpacity: 0.1,
-		shadowRadius: 10,
-		elevation: 4,
+		shadowRadius: 16,
+		elevation: 6,
 		borderWidth: 1,
-		borderColor: '#F0F0F0',
+		borderColor: '#E2E8F0',
+		marginHorizontal: 20,
 	},
 	modernProductImageContainer: {
 		position: 'relative',
-		height: CARD_HEIGHT,
+		height: 200,
 		width: '100%',
 		overflow: 'hidden',
 	},
@@ -1143,91 +1190,105 @@ const styles = StyleSheet.create({
 		resizeMode: 'cover',
 	},
 	modernProductContent: {
-		padding: 16,
+		padding: 20,
+		marginBottom: 16,
+		
+	},
+	modernProductHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: 16,
+		width: '100%',
 	},
 	modernProductName: {
 		fontSize: 18,
 		fontWeight: '700',
-		lineHeight: 24,
-		marginBottom: 8,
+		flex: 1,
+		marginRight: 8,
+		fontFamily: Platform.OS === 'ios' ? 'System' : 'Inter-Bold',
 	},
 	modernProductPrice: {
 		fontSize: 20,
 		fontWeight: '800',
+		fontFamily: Platform.OS === 'ios' ? 'System' : 'Inter-Bold',
 	},
 	modernProductUnit: {
 		fontSize: 14,
 		marginLeft: 2,
 		fontWeight: '500',
+		fontFamily: Platform.OS === 'ios' ? 'System' : 'Inter-Medium',
 	},
 	modernLikeBadge: {
 		position: 'absolute',
-		top: 12,
-		right: 12,
+		top: 16,
+		right: 16,
 		flexDirection: 'row',
 		alignItems: 'center',
-		paddingHorizontal: 8,
-		paddingVertical: 4,
-		borderRadius: 10,
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+		borderRadius: 16,
 		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.2,
-		shadowRadius: 3,
-		elevation: 2,
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 0.3,
+		shadowRadius: 4,
+		elevation: 4,
 	},
 	modernProductTypeBadge: {
 		position: 'absolute',
-		top: 12,
-		left: 12,
-		paddingHorizontal: 10,
-		paddingVertical: 6,
-		borderRadius: 10,
+		top: 16,
+		left: 16,
+		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderRadius: 16,
 		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.2,
-		shadowRadius: 3,
-		elevation: 3,
+		shadowOffset: { width: 0, height: 4 },
+		shadowOpacity: 0.3,
+		shadowRadius: 4,
+		elevation: 4,
 	},
 	modernProductTypeText: {
-		fontSize: 12,
+		fontSize: 13,
 		color: '#FFFFFF',
 		fontWeight: '700',
 		textTransform: 'capitalize',
+		fontFamily: Platform.OS === 'ios' ? 'System' : 'Inter-Bold',
 	},
 	modernStockBadge: {
 		position: 'absolute',
 		bottom: 0,
 		left: 0,
 		right: 0,
-		paddingVertical: 6,
-		paddingHorizontal: 12,
+		paddingVertical: 8,
+		paddingHorizontal: 16,
 	},
 	modernShopInfo: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		flex: 1,
-		paddingHorizontal: 10,
-		paddingVertical: 8,
-		borderRadius: 8,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		borderRadius: 12,
 		backgroundColor: '#F5F7FA',
 	},
 	modernProductShop: {
 		fontSize: 14,
-		marginLeft: 6,
-		fontWeight: '500',
+		marginLeft: 8,
+		fontWeight: '600',
 		flex: 1,
+		fontFamily: Platform.OS === 'ios' ? 'System' : 'Inter-SemiBold',
 	},
 	modernAddToCartButton: {
-		width: 40,
-		height: 40,
-		borderRadius: 20,
+		width: 42,
+		height: 42,
+		borderRadius: 21,
 		justifyContent: 'center',
 		alignItems: 'center',
-		marginLeft: 10,
+		marginLeft: 12,
 		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
+		shadowOffset: { width: 0, height: 4 },
 		shadowOpacity: 0.2,
-		shadowRadius: 3,
-		elevation: 2,
+		shadowRadius: 4,
+		elevation: 4,
 	},
 });

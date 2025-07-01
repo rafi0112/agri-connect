@@ -13,6 +13,7 @@ import {
 	RefreshControl,
 	Platform,
 	Dimensions,
+	StatusBar,
 } from 'react-native';
 import { Link } from 'expo-router';
 import { useAuth } from '../../context/AuthContext';
@@ -29,8 +30,9 @@ import { Colors } from '../../constants/Colors';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
-const CARD_WIDTH = width * 0.42;
-const CARD_HEIGHT = CARD_WIDTH * 1.35;
+// Use almost full width for single column cards with padding
+const CARD_WIDTH = width - 40; // 20px padding on each side
+const CARD_HEIGHT = CARD_WIDTH * 0.65; // Reduced height ratio for single row cards
 
 type Product = {
 	id: string;
@@ -38,6 +40,7 @@ type Product = {
 	price: number;
 	image: string;
 	shopId: string;
+	shopName?: string;
 	unit: string;
 	type: string;
 	likes?: number;
@@ -78,33 +81,32 @@ export default function HomeScreen() {
 	const [searchQuery, setSearchQuery] = useState('');
 	const [selectedCategory, setSelectedCategory] = useState<string>('all');
 	const [categories, setCategories] = useState<Category[]>([]);
-	const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
 	const db = getFirestore(app);
 	const colorScheme = useColorScheme();
 	const colors = Colors[colorScheme ?? 'light'];
 
 	const OPENWEATHER_API_KEY = 'd734f951c52155a9771143721b7eb908';
 
-	// Updated the getCategoryIcon function to assign random icons for each category
+// Updated the getCategoryIcon function with a cleaner and more consistent style
 	const getCategoryIcon = (categoryName: string): { icon: JSX.Element, color: string } => {
 		const iconOptions = [
-			{ icon: <MaterialCommunityIcons name='barley' size={24} color='#FFFFFF' />, color: '#2E7D32' },
-			{ icon: <MaterialCommunityIcons name='leaf' size={24} color='#FFFFFF' />, color: '#388E3C' },
-			{ icon: <MaterialCommunityIcons name='food-apple' size={24} color='#FFFFFF' />, color: '#43A047' },
-			{ icon: <MaterialCommunityIcons name='carrot' size={24} color='#FFFFFF' />, color: '#4CAF50' },
-			{ icon: <MaterialCommunityIcons name='fruit-watermelon' size={24} color='#FFFFFF' />, color: '#66BB6A' },
-			{ icon: <MaterialCommunityIcons name='fruit-cherries' size={24} color='#FFFFFF' />, color: '#81C784' },
-			{ icon: <MaterialCommunityIcons name='corn' size={24} color='#FFFFFF' />, color: '#8BC34A' },
-			{ icon: <Ionicons name='nutrition' size={24} color='#FFFFFF' />, color: '#9CCC65' },
-			{ icon: <MaterialCommunityIcons name='silo' size={24} color='#FFFFFF' />, color: '#CDDC39' },
-			{ icon: <FontAwesome name='leaf' size={24} color='#FFFFFF' />, color: '#8D6E63' },
+			{ icon: <MaterialCommunityIcons name='seed' size={24} color='#FFFFFF' />, color: colors.primary },
+			{ icon: <MaterialCommunityIcons name='leaf' size={24} color='#FFFFFF' />, color: colors.success },
+			{ icon: <MaterialCommunityIcons name='food-apple-outline' size={24} color='#FFFFFF' />, color: colors.orange },
+			{ icon: <MaterialCommunityIcons name='carrot' size={24} color='#FFFFFF' />, color: colors.warning },
+			{ icon: <MaterialCommunityIcons name='fruit-watermelon' size={24} color='#FFFFFF' />, color: colors.accent },
+			{ icon: <MaterialCommunityIcons name='fruit-cherries' size={24} color='#FFFFFF' />, color: colors.secondary },
+			{ icon: <MaterialCommunityIcons name='corn' size={24} color='#FFFFFF' />, color: colors.info },
+			{ icon: <Ionicons name='nutrition-outline' size={24} color='#FFFFFF' />, color: colors.highlight },
+			{ icon: <MaterialCommunityIcons name='silo' size={24} color='#FFFFFF' />, color: '#8D6E63' },
+			{ icon: <FontAwesome name='pagelines' size={24} color='#FFFFFF' />, color: colors.primaryDark },
 		];
 
 		// Special case for 'all' category
 		if (categoryName === 'all') {
 			return { 
 				icon: <MaterialIcons name='category' size={24} color='#FFFFFF' />,
-				color: colors.primary
+				color: colors.primaryDark
 			};
 		}
 
@@ -113,6 +115,38 @@ export default function HomeScreen() {
 		const index = nameSum % iconOptions.length;
 		
 		return iconOptions[index];
+	};
+
+	// Function to fetch shop names
+	const fetchShopNames = async (products: Product[]): Promise<Product[]> => {
+		try {
+			// Get unique shop IDs to avoid duplicate queries
+			const shopIds = [...new Set(products.map(product => product.shopId).filter(id => id))];
+			
+			if (shopIds.length === 0) return products;
+			
+			// Create a map to store shop names
+			const shopNameMap: {[key: string]: string} = {};
+			
+			// Fetch shop documents
+			const shopsQuerySnapshot = await getDocs(collection(db, 'shops'));
+			
+			shopsQuerySnapshot.forEach(doc => {
+				const shopData = doc.data();
+				shopNameMap[doc.id] = shopData.name || "Farmer's Market";
+			});
+			
+			// Update products with shop names
+			return products.map(product => ({
+				...product,
+				shopName: product.shopId && shopNameMap[product.shopId] 
+					? shopNameMap[product.shopId] 
+					: product.shopName || "Farmer's Market"
+			}));
+		} catch (error) {
+			console.error('Error fetching shop names:', error);
+			return products;
+		}
 	};
 
 	useEffect(() => {
@@ -131,6 +165,7 @@ export default function HomeScreen() {
 						price: data.price || 0,
 						image: data.image || 'https://via.placeholder.com/150',
 						shopId: data.shopId || '',
+						shopName: data.shopName,
 						unit: data.unit || '',
 						type: productType,
 						likes: data.likes || 0,
@@ -155,8 +190,11 @@ export default function HomeScreen() {
 					}
 				);
 
-				setProducts(sortedProducts);
-				setFilteredProducts(sortedProducts);
+				// Fetch shop names for products
+				const productsWithShopNames = await fetchShopNames(sortedProducts);
+				
+				setProducts(productsWithShopNames);
+				setFilteredProducts(productsWithShopNames);
 				setCategories(categoryList);
 			} catch (error) {
 				console.error('Error fetching products:', error);
@@ -263,6 +301,7 @@ export default function HomeScreen() {
 					price: data.price || 0,
 					image: data.image || 'https://via.placeholder.com/150',
 					shopId: data.shopId || '',
+					shopName: data.shopName,
 					unit: data.unit || '',
 					type: productType,
 					likes: data.likes || 0,
@@ -286,9 +325,12 @@ export default function HomeScreen() {
 					};
 				}
 			);
+			
+			// Fetch shop names for products
+			const productsWithShopNames = await fetchShopNames(sortedProducts);
 
-			setProducts(sortedProducts);
-			setFilteredProducts(sortedProducts);
+			setProducts(productsWithShopNames);
+			setFilteredProducts(productsWithShopNames);
 			setCategories(categoryList);
 		} catch (error) {
 			console.error('Error refreshing products:', error);
@@ -299,8 +341,9 @@ export default function HomeScreen() {
 
 	if (loading) {
 		return (
-			<View style={styles.loadingContainer}>
-				<ActivityIndicator size='large' color='#2d5a3d' />
+			<View style={[styles.loadingContainer, {backgroundColor: colors.background}]}>
+				<ActivityIndicator size='large' color={colors.primary} />
+				<Text style={[styles.loadingText, {color: colors.textSecondary}]}>Loading products...</Text>
 			</View>
 		);
 	}
@@ -309,253 +352,252 @@ export default function HomeScreen() {
 	const featuredProducts = filteredProducts.slice(0, 6);
 
 	return (
-		<ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
-			{/* Combined Search and Header Section */}
-			<View style={styles.topSection}>
-				<View style={styles.header}>
-					<View style={styles.headerLeft}>
-						<View style={styles.greetingContainer}>
-							<Text style={styles.welcomeText}>Hello there,</Text>
-							<View style={styles.userNameContainer}>
-								<Text style={styles.userName}>
-									{user?.name || 'Guest'}
-								</Text>
-								<View style={styles.userNameGlow} />
+		<ScrollView 
+			style={[styles.container, {backgroundColor: colors.background}]} 
+			showsVerticalScrollIndicator={false}
+			contentContainerStyle={{ paddingBottom: 20 }}
+			refreshControl={
+				<RefreshControl
+					refreshing={refreshing}
+					onRefresh={onRefresh}
+					colors={[colors.primary, colors.accent]}
+					tintColor={colors.primary}
+				/>
+			}
+		>
+			<StatusBar barStyle={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
+			
+			{/* Header Section */}
+			<View style={styles.headerContainer}>
+				<LinearGradient
+					colors={[colors.primary, colors.primaryDark]}
+					start={{ x: 0, y: 0 }}
+					end={{ x: 1, y: 0.8 }}
+					style={styles.headerGradient}
+				>
+					<View style={styles.headerContent}>
+						<View style={styles.headerTopRow}>
+							<View>
+								<Text style={styles.welcomeText}>Welcome back,</Text>
+								<Text style={styles.userName}>{user?.name || 'Guest'}</Text>
 							</View>
+							
+							<Link href='/profile' asChild>
+								<TouchableOpacity style={styles.profileButton}>
+									<Ionicons name='person' size={22} color='#fff' />
+								</TouchableOpacity>
+							</Link>
 						</View>
-
+						
 						{weather && (
-							<View style={styles.weatherContainer}>
+							<View style={styles.weatherCard}>
 								<View style={styles.weatherIconContainer}>
 									<Ionicons
-										name={
-											weather.icon
-												? (`${weather.icon}-outline` as const)
-												: 'cloud-outline'
-										}
-										size={22}
-										color='#34d399'
+										name={weather.icon ? (`${weather.icon}` as const) : 'cloud'}
+										size={20}
+										color={colors.primaryDark}
 									/>
-									<View style={styles.weatherIconGlow} />
 								</View>
-								<View style={styles.weatherInfo}>
-									<Text style={styles.weatherTemp}>{weather.temp}°C</Text>
-									<Text style={styles.weatherDesc}>{weather.description}</Text>
-								</View>
-								<View style={styles.weatherPulse} />
+								<Text style={styles.weatherTemp}>{weather.temp}°C</Text>
+								<Text style={styles.weatherCity}>{weather.city}</Text>
 							</View>
 						)}
 					</View>
+				</LinearGradient>
+			</View>
 
-					<Link href='/profile' asChild>
-						<TouchableOpacity style={styles.profileIconContainer}>
-							<View style={styles.profileIconWrapper}>
-								<Ionicons
-									name='person-circle-outline'
-									size={48}
-									color='#ffffff'
-								/>
-								<View style={styles.profileGlow} />
-							</View>
-						</TouchableOpacity>
-					</Link>
-				</View>
-
+			{/* Main Content Section */}
+			<View style={styles.mainContent}>
 				{/* Search Bar */}
-				<View style={styles.searchSection}>
-					<Ionicons
-						name='search'
-						size={20}
-						color='#6b7280'
-						style={styles.searchIcon}
-					/>
+				<View style={[styles.searchContainer, {backgroundColor: colors.card, borderColor: colors.border}]}>
+					<View style={styles.searchIconContainer}>
+						<Ionicons name='search' size={20} color={colors.primary} />
+					</View>
 					<TextInput
-						placeholder='Search products...'
-						placeholderTextColor='#6b8e70'
-						style={styles.searchInput}
+						placeholder='Search fresh produce...'
+						placeholderTextColor={colors.textMuted}
+						style={[styles.searchInput, {color: colors.text}]}
 						value={searchQuery}
 						onChangeText={setSearchQuery}
 					/>
-				</View>
-			</View>				{/* --- MODERN CATEGORY SECTION --- */}
-			<View style={styles.sectionContainer}>
-				<View style={styles.sectionTitleRow}>
-					<Text style={styles.sectionTitle}>Categories</Text>
-					<View style={styles.sortIndicator}>
-						<Ionicons name="heart" size={14} color="#e91e63" />
-						<Text style={styles.sortText}>Top liked first</Text>
-					</View>
-				</View>
-				<FlatList
-					data={categories}
-					horizontal
-					showsHorizontalScrollIndicator={false}
-					keyExtractor={(item) => item.name}
-					contentContainerStyle={styles.categoriesHorizontalList}
-					renderItem={({ item }) => (
-						<TouchableOpacity
-							style={[
-								styles.categoryCardModern,
-								selectedCategory === item.name &&
-									styles.selectedCategoryCardModern,
-							]}
-							onPress={() => handleCategoryPress(item.name)}
-							activeOpacity={0.8}
+					{searchQuery.length > 0 && (
+						<TouchableOpacity 
+							onPress={() => setSearchQuery('')}
+							style={styles.clearSearchButton}
 						>
-							<View style={styles.categoryIconModern}>{item.icon}</View>
-							<Text
-								style={[
-									styles.categoryCardLabelModern,
-									selectedCategory === item.name &&
-										styles.selectedCategoryCardLabelModern,
-								]}
-							>
-								{item.name.charAt(0).toUpperCase() + item.name.slice(1)}
-							</Text>
+							<Ionicons name="close-circle" size={18} color={colors.textMuted} />
 						</TouchableOpacity>
 					)}
-				/>
-			</View>
-
-			{/* --- MODERN FEATURED SECTION WITH GRID/LIST TOGGLE --- */}
-			<View style={styles.sectionContainer}>
-				<View style={styles.sectionTitleRow}>
-					<View style={styles.titleWithSubtitle}>
-						<Text style={styles.sectionTitle}>Featured Products</Text>
-						<Text style={styles.sectionSubtitle}>Sorted by popularity</Text>
-					</View>
-					<View style={styles.toggleRow}>
-						<TouchableOpacity
-							onPress={() => setViewMode('grid')}
-							style={[
-								styles.toggleBtn,
-								viewMode === 'grid' && styles.toggleBtnActive,
-							]}
-						>
-							<Ionicons
-								name='grid'
-								size={18}
-								color={viewMode === 'grid' ? '#fff' : '#fff'}
-							/>
-						</TouchableOpacity>
-						<TouchableOpacity
-							onPress={() => setViewMode('list')}
-							style={[
-								styles.toggleBtn,
-								viewMode === 'list' && styles.toggleBtnActive,
-							]}
-						>
-							<Ionicons
-								name='list'
-								size={18}
-								color={viewMode === 'list' ? '#fff' : '#fff'}
-							/>
-						</TouchableOpacity>
-					</View>
 				</View>
-				{featuredProducts.length === 0 ? (
-					<View style={styles.emptyContainer}>
-						<Ionicons name='sad-outline' size={48} color='#64748b' />
-						<Text style={styles.emptyText}>No products found</Text>
+
+				{/* Categories Section */}
+				<View style={styles.sectionContainer}>
+					<View style={styles.sectionHeader}>
+						<Text style={[styles.sectionTitle, {color: colors.text}]}>Categories</Text>
+						<View style={[styles.sortIndicator, {backgroundColor: colors.errorLight}]}>
+							<Ionicons name="heart" size={14} color={colors.error} />
+							<Text style={[styles.sortText, {color: colors.error}]}>Top liked</Text>
+						</View>
 					</View>
-				) : viewMode === 'grid' ? (
+					
 					<FlatList
-						data={featuredProducts}
-						numColumns={2}
-						key={'grid'}
-						keyExtractor={(item) => item.id}
-						contentContainerStyle={styles.featuredGrid}
+						data={categories}
+						horizontal
+						showsHorizontalScrollIndicator={false}
+						keyExtractor={(item) => item.name}
+						contentContainerStyle={styles.categoriesList}
 						renderItem={({ item }) => (
-							<Link
-								href={{ pathname: '/product/[id]', params: { id: item.id } }}
-								asChild
+							<TouchableOpacity
+								style={[
+									styles.categoryCard,
+									{ 
+										backgroundColor: selectedCategory === item.name 
+											? item.color 
+											: `${colors.card}`
+									},
+									selectedCategory === item.name && styles.selectedCategoryCard
+								]}
+								onPress={() => handleCategoryPress(item.name)}
+								activeOpacity={0.7}
 							>
-								<TouchableOpacity
-									style={styles.featuredCardModern}
-									activeOpacity={0.85}
+								<View 
+									style={[
+										styles.categoryIcon,
+										{ 
+											backgroundColor: selectedCategory === item.name 
+												? 'rgba(255,255,255,0.3)' 
+												: item.color
+										}
+									]}
 								>
-									<Image
-										source={{ uri: item.image }}
-										style={styles.featuredImageModern}
-									/>
-									<View style={styles.featuredInfoModern}>
-										<Text
-											style={styles.featuredNameModern}
-											numberOfLines={1}
-										>
-											{item.name}
-										</Text>
-										<View style={styles.featuredMetaRow}>
-											<View style={styles.featuredPriceRowModern}>
-												<Text style={styles.featuredPriceModern}>
-													৳{item.price.toFixed(2)}
-												</Text>
-												<Text style={styles.featuredUnitModern}>
-													/{item.unit}
+									{item.icon}
+								</View>
+								<Text
+									style={[
+										styles.categoryLabel,
+										{ color: selectedCategory === item.name ? '#fff' : colors.text }
+									]}
+								>
+									{item.name.charAt(0).toUpperCase() + item.name.slice(1)}
+								</Text>
+								{selectedCategory === item.name && (
+									<View style={styles.categorySelectedIndicator} />
+								)}
+							</TouchableOpacity>
+						)}
+					/>
+				</View>
+
+				{/* Featured Products Section */}
+				<View style={styles.sectionContainer}>
+					<View style={styles.sectionHeader}>
+						<View>
+							<Text style={[styles.sectionTitle, {color: colors.text, fontSize: 24, fontWeight: '700'}]}>
+								Featured Products
+							</Text>
+							<Text style={[styles.sectionSubtitle, {color: colors.textSecondary}]}>Fresh from the farm</Text>
+						</View>
+						
+						<View style={[styles.sortIndicator, {backgroundColor: colors.primaryLight + '20'}]}>
+							<Ionicons name="star" size={14} color={colors.primary} />
+							<Text style={[styles.sortText, {color: colors.primary}]}>Featured</Text>
+						</View>
+					</View>
+					
+					{featuredProducts.length === 0 ? (
+						<View style={[styles.emptyContainer, {backgroundColor: colors.card}]}>
+							<Ionicons name='leaf-outline' size={48} color={colors.textMuted} />
+							<Text style={[styles.emptyText, {color: colors.textSecondary}]}>No products found</Text>
+							<Text style={[styles.emptySubtext, {color: colors.textMuted}]}>Try a different category or search</Text>
+						</View>
+					) : (
+						<FlatList
+							data={featuredProducts}
+							numColumns={1}
+							keyExtractor={(item) => item.id}
+							contentContainerStyle={styles.productsGrid}
+							renderItem={({ item }) => (
+								<Link
+									href={{ pathname: '/product/[id]', params: { id: item.id } }}
+									asChild
+								>
+									<TouchableOpacity
+										style={[styles.modernProductCard, {backgroundColor: colors.card, borderColor: colors.border}]}
+										activeOpacity={0.7}
+									>
+										<View style={styles.modernProductImageContainer}>
+											<Image
+												source={{ uri: item.image }}
+												style={styles.modernProductImage}
+											/>
+											
+											{item.likes !== undefined && item.likes > 0 && (
+												<View style={[styles.modernLikeBadge, {backgroundColor: colors.likeButton + 'E6'}]}>
+													<Ionicons name="heart" size={12} color="#FFF" />
+													<Text style={styles.likeCount}>{item.likes}</Text>
+												</View>
+											)}
+											
+											<View style={[styles.modernProductTypeBadge, {backgroundColor: colors.primaryDark + 'E6'}]}>
+												<Text style={styles.modernProductTypeText}>
+													{item.type}
 												</Text>
 											</View>
-											{item.likes !== undefined && item.likes > 0 && (
-												<View style={styles.likesContainer}>
-													<Ionicons name="heart" size={12} color="#e91e63" />
-													<Text style={styles.likesCount}>{item.likes}</Text>
+											
+											{item.stock !== undefined && item.stock <= 5 && (
+												<View style={[
+													styles.modernStockBadge, 
+													{
+														backgroundColor: item.stock === 0 
+															? colors.error + 'E6' 
+															: colors.warning + 'E6'
+													}
+												]}>
+													<Text style={styles.stockText}>
+														{item.stock === 0 ? 'Out of stock' : `Only ${item.stock} left`}
+													</Text>
 												</View>
 											)}
 										</View>
-									</View>
-								</TouchableOpacity>
-							</Link>
-						)}
-						scrollEnabled={false}
-					/>
-				) : (
-					<FlatList
-						data={featuredProducts}
-						key={'list'}
-						keyExtractor={(item) => item.id}
-						contentContainerStyle={styles.featuredList}
-						renderItem={({ item }) => (
-							<Link
-								href={{ pathname: '/product/[id]', params: { id: item.id } }}
-								asChild
-							>
-								<TouchableOpacity
-									style={styles.featuredListItemModern}
-									activeOpacity={0.85}
-								>
-									<Image
-										source={{ uri: item.image }}
-										style={styles.featuredListImageModern}
-									/>
-									<View style={styles.featuredListInfoModern}>
-										<Text
-											style={styles.featuredNameModern}
-											numberOfLines={1}
-										>
-											{item.name}
-										</Text>
-										<View style={styles.featuredMetaRow}>
-											<View style={styles.featuredPriceRowModern}>
-												<Text style={styles.featuredPriceModern}>
+										
+										<View style={styles.modernProductContent}>
+											<Text
+												style={[styles.modernProductName, {color: colors.text}]}
+												numberOfLines={2}
+											>
+												{item.name}
+											</Text>
+											
+											<View style={styles.priceContainer}>
+												<Text style={[styles.modernProductPrice, {color: colors.success}]}>
 													৳{item.price.toFixed(2)}
 												</Text>
-												<Text style={styles.featuredUnitModern}>
+												<Text style={[styles.modernProductUnit, {color: colors.textSecondary}]}>
 													/{item.unit}
 												</Text>
 											</View>
-											{item.likes !== undefined && item.likes > 0 && (
-												<View style={styles.likesContainer}>
-													<Ionicons name="heart" size={12} color="#e91e63" />
-													<Text style={styles.likesCount}>{item.likes}</Text>
-												</View>
-											)}
+											
+											<View style={styles.shopInfoContainer}>
+												{item.shopId && (
+													<View style={[styles.modernShopInfo, {backgroundColor: colorScheme === 'dark' ? colors.cardAlt : colors.cardBackgroundLight}]}>
+														<Ionicons name="storefront-outline" size={16} color={colors.primary} />
+														<Text style={[styles.modernProductShop, {color: colors.textSecondary}]} numberOfLines={1}>
+															{item.shopName || "Farmer's Market"}
+														</Text>
+													</View>
+												)}
+												<TouchableOpacity style={[styles.modernAddToCartButton, {backgroundColor: colors.primary}]}>
+													<Ionicons name="cart-outline" size={18} color="#FFFFFF" />
+												</TouchableOpacity>
+											</View>
 										</View>
-									</View>
-								</TouchableOpacity>
-							</Link>
-						)}
-						scrollEnabled={false}
-					/>
-				)}
+									</TouchableOpacity>
+								</Link>
+							)}
+							scrollEnabled={false}
+						/>
+					)}
+				</View>
 			</View>
 		</ScrollView>
 	);
@@ -564,257 +606,163 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#f0f7f0',
-		paddingHorizontal: 16,
+		backgroundColor: '#F1F5F9',
+		paddingHorizontal: 0,
 	},
-
 	loadingContainer: {
 		flex: 1,
 		justifyContent: 'center',
 		alignItems: 'center',
-		backgroundColor: '#f0f7f0',
+		backgroundColor: '#F1F5F9',
 	},
-
-	topSection: {
-		marginBottom: 24,
-		marginTop: 20,
+	loadingText: {
+		marginTop: 12,
+		fontSize: 16,
+		fontWeight: '500',
 	},
-
-	// Enhanced header with darkish green theme and crazy effects
-	header: {
+	// Header styles
+	headerContainer: {
+		borderBottomLeftRadius: 24,
+		borderBottomRightRadius: 24,
+		overflow: 'hidden',
+		marginBottom: 15,
+		elevation: 4,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 3 },
+		shadowOpacity: 0.12,
+		shadowRadius: 8,
+	},
+	headerGradient: {
+		paddingTop: Platform.OS === 'ios' ? 50 : 25,
+		paddingBottom: 24,
+	},
+	headerContent: {
+		paddingHorizontal: 20,
+	},
+	headerTopRow: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
-		backgroundColor: '#1a3d2e',
-		padding: 24,
-		borderRadius: 25,
 		marginBottom: 20,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 8 },
-		shadowOpacity: 0.3,
-		shadowRadius: 20,
-		elevation: 15,
-		borderWidth: 2,
-		borderColor: '#34d399',
-		position: 'relative',
-		overflow: 'hidden',
 	},
-
-	headerLeft: {
-		flex: 1,
-	},
-
-	greetingContainer: {
-		marginBottom: 12,
-	},
-
 	welcomeText: {
-		fontSize: 16,
-		color: '#86efac',
-		fontWeight: '600',
+		fontSize: 15,
+		color: 'rgba(255, 255, 255, 0.85)',
 		marginBottom: 4,
-		textShadowColor: 'rgba(52, 211, 153, 0.5)',
-		textShadowOffset: { width: 0, height: 1 },
-		textShadowRadius: 3,
+		fontWeight: '500',
 	},
-
-	userNameContainer: {
-		position: 'relative',
-		alignSelf: 'flex-start',
-	},
-
 	userName: {
 		fontSize: 24,
-		fontWeight: '900',
-		color: '#ffffff',
-		letterSpacing: 1,
-		textTransform: 'uppercase',
-		textShadowColor: 'rgba(52, 211, 153, 0.8)',
-		textShadowOffset: { width: 0, height: 2 },
-		textShadowRadius: 8,
+		fontWeight: 'bold',
+		color: '#FFFFFF',
 	},
-
-	userNameGlow: {
-		position: 'absolute',
-		top: -2,
-		left: -2,
-		right: -2,
-		bottom: -2,
-		backgroundColor: 'rgba(52, 211, 153, 0.2)',
-		borderRadius: 8,
-		zIndex: -1,
+	profileButton: {
+		width: 42,
+		height: 42,
+		borderRadius: 21,
+		backgroundColor: 'rgba(255, 255, 255, 0.2)',
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderWidth: 1.5,
+		borderColor: 'rgba(255, 255, 255, 0.3)',
 	},
-
-	// Crazy weather container with animations and effects
-	weatherContainer: {
+	weatherCard: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: 'rgba(16, 185, 129, 0.2)',
-		paddingHorizontal: 16,
-		paddingVertical: 10,
-		borderRadius: 20,
-		marginTop: 8,
-		borderWidth: 1,
-		borderColor: 'rgba(52, 211, 153, 0.5)',
-		position: 'relative',
-		overflow: 'hidden',
+		backgroundColor: 'rgba(255, 255, 255, 0.95)',
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		borderRadius: 16,
+		alignSelf: 'flex-start',
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.1,
+		shadowRadius: 2,
 	},
-
 	weatherIconContainer: {
-		position: 'relative',
-		marginRight: 12,
-		backgroundColor: 'rgba(52, 211, 153, 0.3)',
-		borderRadius: 20,
-		padding: 8,
+		width: 34,
+		height: 34,
+		borderRadius: 17,
+		backgroundColor: 'rgba(46, 125, 50, 0.12)',
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
-
-	weatherIconGlow: {
-		position: 'absolute',
-		top: -2,
-		left: -2,
-		right: -2,
-		bottom: -2,
-		backgroundColor: 'rgba(52, 211, 153, 0.4)',
-		borderRadius: 22,
-		zIndex: -1,
-	},
-
-	weatherInfo: {
-		flex: 1,
-	},
-
 	weatherTemp: {
-		fontSize: 18,
-		color: '#ffffff',
-		fontWeight: '800',
-		textShadowColor: 'rgba(52, 211, 153, 0.7)',
-		textShadowOffset: { width: 0, height: 1 },
-		textShadowRadius: 4,
+		fontSize: 16,
+		fontWeight: 'bold',
+		marginLeft: 8,
+		color: '#333',
 	},
-
-	weatherDesc: {
-		fontSize: 12,
-		color: '#bbf7d0',
-		fontWeight: '600',
-		textTransform: 'capitalize',
-		marginTop: 2,
+	weatherCity: {
+		fontSize: 14,
+		marginLeft: 6,
+		color: '#666',
+		borderLeftWidth: 1,
+		borderLeftColor: '#ddd',
+		paddingLeft: 6,
 	},
-
-	weatherPulse: {
-		position: 'absolute',
-		top: 0,
-		left: 0,
-		right: 0,
-		bottom: 0,
-		backgroundColor: 'rgba(52, 211, 153, 0.1)',
-		borderRadius: 20,
+	
+	// Main content styles
+	mainContent: {
+		paddingHorizontal: 20,
+		paddingTop: 10,
 	},
-
-	profileIconContainer: {
-		paddingLeft: 16,
-	},
-
-	profileIconWrapper: {
-		position: 'relative',
-		backgroundColor: 'rgba(52, 211, 153, 0.2)',
-		borderRadius: 40,
-		padding: 12,
-		borderWidth: 2,
-		borderColor: 'rgba(52, 211, 153, 0.6)',
-	},
-
-	profileGlow: {
-		position: 'absolute',
-		top: -4,
-		left: -4,
-		right: -4,
-		bottom: -4,
-		backgroundColor: 'rgba(52, 211, 153, 0.3)',
-		borderRadius: 44,
-		zIndex: -1,
-	},
-
-	// Enhanced search section
-	searchSection: {
-		position: 'relative',
+	searchContainer: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: '#ffffff',
-		borderRadius: 15,
+		backgroundColor: '#fff',
+		borderRadius: 16,
+		paddingVertical: 12,
+		marginBottom: 24,
 		borderWidth: 1,
-		borderColor: '#e8f5e8',
-		paddingHorizontal: 16,
-		paddingVertical: 14,
-		marginBottom: 20,
-		shadowColor: '#2d5a3d',
-		shadowOffset: { width: 0, height: 2 },
+		borderColor: '#eaefea',
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
 		shadowOpacity: 0.08,
-		shadowRadius: 6,
-		elevation: 4,
+		shadowRadius: 2,
 	},
-
-	searchIcon: {
-		marginRight: 12,
-		color: '#4a6b4f',
+	searchIconContainer: {
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		backgroundColor: 'rgba(46, 125, 50, 0.1)',
+		alignItems: 'center',
+		justifyContent: 'center',
+		marginLeft: 8,
+		marginRight: 8,
 	},
-
 	searchInput: {
 		flex: 1,
 		fontSize: 16,
-		color: '#2d5a3d',
-		fontWeight: '500',
+		color: '#333',
 	},
-
+	clearSearchButton: {
+		padding: 8,
+		marginRight: 8,
+	},
+	
+	// Section styles
 	sectionContainer: {
-		marginBottom: 28,
+		marginBottom: 24,
 	},
-
-	// Crazy modern section title with glow effects
-	sectionTitleContainer: {
-		position: 'relative',
-		marginBottom: 20,
-		alignSelf: 'flex-start',
+	sectionHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: 16,
 	},
-
 	sectionTitle: {
-		fontSize: 24,
+		fontSize: 20,
 		fontWeight: 'bold',
 		color: '#333',
 	},
-
 	sectionSubtitle: {
-		fontSize: 12,
-		fontWeight: '500',
-		color: '#4a6b4f',
+		fontSize: 14,
+		color: '#666',
+		marginTop: 2,
 	},
-
-	titleWithSubtitle: {
-		flex: 1,
-	},
-
-	sectionTitleRow: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'space-between',
-		marginBottom: 10,
-	},
-
-	toggleRow: {
-		flexDirection: 'row',
-		gap: 8,
-	},
-
-	toggleBtn: {
-		backgroundColor: '#14532d', // dark green
-		borderRadius: 8,
-		padding: 6,
-		marginLeft: 6,
-	},
-
-	toggleBtnActive: {
-		backgroundColor: '#15803d', // slightly lighter dark green
-	},
-
 	sortIndicator: {
 		flexDirection: 'row',
 		alignItems: 'center',
@@ -822,230 +770,464 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 8,
 		paddingVertical: 4,
 		borderRadius: 12,
-		borderWidth: 1,
-		borderColor: '#fecdd3',
 	},
-
 	sortText: {
 		fontSize: 12,
 		fontWeight: '600',
 		color: '#e91e63',
 		marginLeft: 4,
 	},
-
-	// Enhanced categories main container with background effects
-	categoriesMainContainer: {
-		position: 'relative',
-		backgroundColor: 'rgba(255, 255, 255, 0.8)',
-		borderRadius: 24,
-		padding: 16,
-		borderWidth: 2,
-		borderColor: 'rgba(52, 211, 153, 0.2)',
-		shadowColor: '#2d5a3d',
-		shadowOffset: { width: 0, height: 6 },
-		shadowOpacity: 0.15,
-		shadowRadius: 12,
-		elevation: 8,
-		overflow: 'hidden',
+	viewToggle: {
+		flexDirection: 'row',
+		backgroundColor: 'rgba(0,0,0,0.05)',
+		borderRadius: 8,
+		padding: 3,
 	},
-
-	categoriesHorizontalList: {
-		paddingVertical: 4,
-		paddingLeft: 2,
+	toggleButton: {
+		padding: 6,
+		borderRadius: 6,
+		marginHorizontal: 2,
 	},
-
-	// Crazy modern category grid items
-	categoryCardModern: {
-		backgroundColor: 'rgba(236, 253, 245, 0.95)', // very light green
+	toggleActiveButton: {
+		backgroundColor: '#2E7D32',
+	},
+	
+	// Categories styles
+	categoriesList: {
+		paddingVertical: 8,
+	},
+	categoryCard: {
+		backgroundColor: '#fff',
 		borderRadius: 16,
+		padding: 14,
+		marginRight: 12,
 		alignItems: 'center',
-		marginRight: 14,
-		paddingVertical: 14,
-		paddingHorizontal: 16,
-		borderWidth: 1,
-		borderColor: '#bbf7d0', // green border
-		shadowColor: '#22c55e',
+		minWidth: 110,
+		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.08,
-		shadowRadius: 6,
+		shadowOpacity: 0.06,
+		shadowRadius: 4,
 		elevation: 2,
-		minWidth: 90,
-		minHeight: 90,
-		position: 'relative',
+		paddingBottom: 16,
 	},
-
-	selectedCategoryCardModern: {
-		backgroundColor: '#22c55e', // green
-		borderColor: '#15803d', // dark green
-		shadowColor: '#22c55e',
-		shadowOpacity: 0.18,
+	selectedCategoryCard: {
+		shadowOpacity: 0.1,
+		elevation: 3,
 	},
-
-	categoryIconModern: {
-		width: 38,
-		height: 38,
-		borderRadius: 19,
-		backgroundColor: '#bbf7d0', // greenish
-		alignItems: 'center',
+	categoryIcon: {
+		width: 48,
+		height: 48,
+		borderRadius: 24,
 		justifyContent: 'center',
-		marginBottom: 8,
-		borderWidth: 1,
-		borderColor: '#4ade80', // green border
+		alignItems: 'center',
+		marginBottom: 10,
 	},
-
-	categoryCardLabelModern: {
-		fontSize: 13,
-		color: '#15803d', // dark green
+	categoryLabel: {
+		fontSize: 14,
 		fontWeight: '600',
 		textAlign: 'center',
 	},
-
-	selectedCategoryCardLabelModern: {
-		color: '#fff',
-		fontWeight: '700',
+	categorySelectedIndicator: {
+		position: 'absolute',
+		bottom: 6,
+		width: 20,
+		height: 3,
+		borderRadius: 1.5,
+		backgroundColor: '#fff',
 	},
-
-	// Featured Products Section
-	featuredGrid: {
+	
+	// Products styles
+	productsGrid: {
 		paddingVertical: 8,
-		paddingLeft: 2,
 	},
-
-	// Enhanced featured cards
-	featuredCardModern: {
-		backgroundColor: '#f6fcf6', // light green
-		borderRadius: 18,
-		margin: 8,
+	productsList: {
+		paddingVertical: 8,
+	},
+	productCard: {
 		flex: 1,
-		shadowColor: '#22c55e', // green shadow
-		shadowOffset: { width: 0, height: 4 },
-		shadowOpacity: 0.10,
-		shadowRadius: 8,
-		elevation: 4,
+		margin: 8,
+		borderRadius: 20,
+		backgroundColor: '#FFFFFF',
 		overflow: 'hidden',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 6 },
+		shadowOpacity: 0.15,
+		shadowRadius: 12,
+		elevation: 5,
+		borderWidth: 1,
+	},
+	productImageContainer: {
 		position: 'relative',
+		height: CARD_WIDTH * 0.9,
+		overflow: 'hidden',
 	},
-
-	featuredImageModern: {
+	productImage: {
 		width: '100%',
-		height: 110,
-		borderTopLeftRadius: 18,
-		borderTopRightRadius: 18,
+		height: '100%',
 		resizeMode: 'cover',
-		backgroundColor: '#bbf7d0', // greenish
 	},
-
-	featuredInfoModern: {
-		padding: 12,
+	productTypeBadge: {
+		position: 'absolute',
+		top: 12,
+		left: 12,
+		backgroundColor: 'rgba(30, 41, 59, 0.85)',
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+		borderRadius: 10,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 3,
 	},
-
-	featuredNameModern: {
-		fontSize: 15,
+	productTypeText: {
+		fontSize: 12,
+		color: '#FFFFFF',
 		fontWeight: '700',
-		color: '#14532d', // dark green
-		marginBottom: 6,
+		textTransform: 'capitalize',
 	},
-
-	featuredMetaRow: {
+	likeBadge: {
+		position: 'absolute',
+		top: 12,
+		right: 12,
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: 'rgba(220, 38, 38, 0.85)',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 10,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 2,
+	},
+	likeCount: {
+		fontSize: 11,
+		fontWeight: '600',
+		color: '#FFFFFF',
+		marginLeft: 3,
+	},
+	stockBadge: {
+		position: 'absolute',
+		bottom: 0,
+		left: 0,
+		right: 0,
+		paddingVertical: 6,
+		paddingHorizontal: 12,
+		backgroundColor: 'rgba(245, 158, 11, 0.9)',
+	},
+	stockText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#FFFFFF',
+		textAlign: 'center',
+	},
+	productContent: {
+		padding: 16,
+	},
+	productHeader: {
+		marginBottom: 10,
+	},
+	productName: {
+		fontSize: 17,
+		fontWeight: '700',
+		flex: 1,
+		lineHeight: 22,
+	},
+	priceContainer: {
+		flexDirection: 'row',
+		alignItems: 'baseline',
+		marginVertical: 6,
+	},
+	productPrice: {
+		fontSize: 20,
+		fontWeight: '800',
+	},
+	productUnit: {
+		fontSize: 14,
+		marginLeft: 2,
+		fontWeight: '500',
+	},
+	shopInfoContainer: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
+		marginTop: 8,
 	},
-
-	featuredPriceRowModern: {
-		flexDirection: 'row',
-		alignItems: 'baseline',
-	},
-
-	featuredPriceModern: {
-		fontSize: 16,
-		fontWeight: '700',
-		color: '#15803d', // dark green
-	},
-
-	featuredUnitModern: {
-		fontSize: 13,
-		color: '#15803d', // green
-		marginLeft: 4,
-	},
-
-	likesContainer: {
+	shopInfo: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: '#ffebee',
+		flex: 1,
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		borderRadius: 8,
+	},
+	productShop: {
+		fontSize: 13,
+		marginLeft: 6,
+		fontWeight: '500',
+		flex: 1,
+	},
+	addToCartButton: {
+		width: 36,
+		height: 36,
+		borderRadius: 18,
+		backgroundColor: '#2E7D32',
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginLeft: 10,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 2,
+	},
+	
+	// List view styles
+	productListItem: {
+		flexDirection: 'row',
+		backgroundColor: '#fff',
+		borderRadius: 16,
+		marginBottom: 12,
+		overflow: 'hidden',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.08,
+		shadowRadius: 4,
+		elevation: 3,
+	},
+	productListImage: {
+		width: 100,
+		height: 100,
+		resizeMode: 'cover',
+	},
+	productListContent: {
+		flex: 1,
+		padding: 12,
+		position: 'relative',
+	},
+	productListHeader: {
+		marginBottom: 6,
+	},
+	productListTags: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginVertical: 4,
+	},
+	productListTypeBadge: {
+		backgroundColor: 'rgba(30, 41, 59, 0.85)',
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+		borderRadius: 8,
+		marginRight: 8,
+	},
+	productListTypeText: {
+		fontSize: 10,
+		color: '#FFFFFF',
+		fontWeight: '600',
+		textTransform: 'capitalize',
+	},
+	productListLikes: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: 'rgba(239, 68, 68, 0.1)',
 		paddingHorizontal: 6,
 		paddingVertical: 2,
 		borderRadius: 8,
 	},
-
-	likesCount: {
-		fontSize: 12,
+	productListLikesText: {
+		fontSize: 11,
 		fontWeight: '600',
-		color: '#e91e63',
-		marginLeft: 2,
+		color: '#EF4444',
+		marginLeft: 3,
 	},
-
-	featuredList: {
-		paddingVertical: 8,
-		paddingLeft: 2,
+	productListBottom: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginTop: 4,
 	},
-
-	featuredListItemModern: {
+	productListShopInfo: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		backgroundColor: '#f6fcf6', // light green
+		flex: 1,
+		marginLeft: 10,
+	},
+	productListShopText: {
+		fontSize: 11,
+		color: '#64748B',
+		marginLeft: 4,
+		fontWeight: '500',
+	},
+	productListStockBadge: {
+		position: 'absolute',
+		bottom: 0,
+		left: 0,
+		right: 0,
+		paddingVertical: 4,
+		paddingHorizontal: 12,
+	},
+	productListStockText: {
+		fontSize: 11,
+		fontWeight: '600',
+		textAlign: 'center',
+	},
+	productListCartButton: {
+		width: 32,
+		height: 32,
 		borderRadius: 16,
-		marginBottom: 14,
-		marginHorizontal: 4,
-		padding: 8,
-		shadowColor: '#22c55e', // green shadow
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.08,
-		shadowRadius: 6,
+		backgroundColor: '#2E7D32',
+		justifyContent: 'center',
+		alignItems: 'center',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.1,
+		shadowRadius: 2,
+		elevation: 1,
+	},
+	
+	// Empty state
+	emptyContainer: {
+		alignItems: 'center',
+		justifyContent: 'center',
+		padding: 40,
+		backgroundColor: '#fff',
+		borderRadius: 16,
+		margin: 20,
+		borderWidth: 1,
+		borderColor: '#eaefea',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.05,
+		shadowRadius: 3,
 		elevation: 2,
 	},
-	featuredListImageModern: {
-		width: 70,
-		height: 70,
-		borderRadius: 12,
-		marginRight: 14,
-		backgroundColor: '#bbf7d0', // greenish
+	emptyText: {
+		fontSize: 18,
+		fontWeight: '600',
+		marginTop: 12,
+		color: '#333',
 	},
-	featuredListInfoModern: {
-		flex: 1,
-		justifyContent: 'center',
+	emptySubtext: {
+		fontSize: 14,
+		textAlign: 'center',
+		marginTop: 8,
+		color: '#777',
+		lineHeight: 20,
 	},
-
-	// Enhanced new badge
-	newBadge: {
+	
+	// Modern Card Styles
+	modernProductCard: {
+		marginVertical: 10,
+		borderRadius: 16,
+		backgroundColor: '#FFFFFF',
+		overflow: 'hidden',
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 6 },
+		shadowOpacity: 0.1,
+		shadowRadius: 10,
+		elevation: 4,
+		borderWidth: 1,
+		borderColor: '#F0F0F0',
+	},
+	modernProductImageContainer: {
+		position: 'relative',
+		height: CARD_HEIGHT,
+		width: '100%',
+		overflow: 'hidden',
+	},
+	modernProductImage: {
+		width: '100%',
+		height: '100%',
+		resizeMode: 'cover',
+	},
+	modernProductContent: {
+		padding: 16,
+	},
+	modernProductName: {
+		fontSize: 18,
+		fontWeight: '700',
+		lineHeight: 24,
+		marginBottom: 8,
+	},
+	modernProductPrice: {
+		fontSize: 20,
+		fontWeight: '800',
+	},
+	modernProductUnit: {
+		fontSize: 14,
+		marginLeft: 2,
+		fontWeight: '500',
+	},
+	modernLikeBadge: {
+		position: 'absolute',
+		top: 12,
+		right: 12,
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 10,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 2,
+	},
+	modernProductTypeBadge: {
 		position: 'absolute',
 		top: 12,
 		left: 12,
-		backgroundColor: '#14532d', // dark green
 		paddingHorizontal: 10,
-		paddingVertical: 4,
-		borderRadius: 8,
-		zIndex: 1,
-		shadowColor: '#14532d', // dark green
+		paddingVertical: 6,
+		borderRadius: 10,
+		shadowColor: '#000',
 		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.3,
-		shadowRadius: 4,
-		elevation: 4,
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 3,
 	},
-
-	emptyContainer: {
+	modernProductTypeText: {
+		fontSize: 12,
+		color: '#FFFFFF',
+		fontWeight: '700',
+		textTransform: 'capitalize',
+	},
+	modernStockBadge: {
+		position: 'absolute',
+		bottom: 0,
+		left: 0,
+		right: 0,
+		paddingVertical: 6,
+		paddingHorizontal: 12,
+	},
+	modernShopInfo: {
+		flexDirection: 'row',
 		alignItems: 'center',
-		padding: 40,
-		backgroundColor: '#ffffff',
-		borderRadius: 18,
-		borderWidth: 1,
-		borderColor: '#e8f5e8',
+		flex: 1,
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		borderRadius: 8,
+		backgroundColor: '#F5F7FA',
 	},
-
-	emptyText: {
-		fontSize: 16,
-		color: '#4a6b4f',
-		marginTop: 12,
+	modernProductShop: {
+		fontSize: 14,
+		marginLeft: 6,
 		fontWeight: '500',
+		flex: 1,
+	},
+	modernAddToCartButton: {
+		width: 40,
+		height: 40,
+		borderRadius: 20,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginLeft: 10,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 2 },
+		shadowOpacity: 0.2,
+		shadowRadius: 3,
+		elevation: 2,
 	},
 });

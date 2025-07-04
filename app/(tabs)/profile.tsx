@@ -36,6 +36,8 @@ export default function ProfileScreen() {
 	const [orderCount, setOrderCount] = useState(0);
 	const [userProfile, setUserProfile] = useState<any>(null);
 	const [loading, setLoading] = useState(true);
+	const [deliveryAddress, setDeliveryAddress] = useState<string | null>(null);
+	const [paymentMethod, setPaymentMethod] = useState<string | null>(null);
 	const db = getFirestore(app);
 	const colorScheme = useColorScheme();
 	const colors = Colors[colorScheme ?? 'light'];
@@ -50,7 +52,18 @@ export default function ProfileScreen() {
 				const userDoc = await getDoc(userDocRef);
 				
 				if (userDoc.exists()) {
-					setUserProfile(userDoc.data());
+					const userData = userDoc.data();
+					setUserProfile(userData);
+					
+					// Extract delivery address
+					if (userData.deliveryAddress) {
+						setDeliveryAddress(userData.deliveryAddress);
+					}
+					
+					// Extract payment method
+					if (userData.paymentMethod) {
+						setPaymentMethod(userData.paymentMethod);
+					}
 				}
 
 				// Fetch order count
@@ -67,6 +80,44 @@ export default function ProfileScreen() {
 
 		fetchUserData();
 	}, [user?.id]);
+
+	// Add a focus listener to refresh data when returning to this screen
+	useEffect(() => {
+		const unsubscribe = navigation.addListener('focus', () => {
+			if (user?.id) {
+				setLoading(true);
+				const fetchUserData = async () => {
+					try {
+						// Fetch user profile data
+						const userDocRef = doc(db, 'users', user.id);
+						const userDoc = await getDoc(userDocRef);
+						
+						if (userDoc.exists()) {
+							const userData = userDoc.data();
+							setUserProfile(userData);
+							
+							// Extract delivery address
+							if (userData.deliveryAddress) {
+								setDeliveryAddress(userData.deliveryAddress);
+							}
+							
+							// Extract payment method
+							if (userData.paymentMethod) {
+								setPaymentMethod(userData.paymentMethod);
+							}
+						}
+					} catch (error) {
+						console.error('Error refreshing user data:', error);
+					} finally {
+						setLoading(false);
+					}
+				};
+				fetchUserData();
+			}
+		});
+		
+		return unsubscribe;
+	}, [navigation, user?.id]);
 
 	const handleLogout = () => {
 		Alert.alert(
@@ -189,7 +240,17 @@ export default function ProfileScreen() {
 						</View>
 						<View style={styles.menuContent}>
 							<Text style={[styles.menuText, { color: colors.text }]}>Delivery Address</Text>
-							<Text style={[styles.menuSubtext, { color: colors.textLight }]}>Manage your addresses</Text>
+							{deliveryAddress ? (
+								<Text 
+									style={[styles.menuSubtext, { color: colors.textLight }]} 
+									numberOfLines={1} 
+									ellipsizeMode="tail"
+								>
+									{deliveryAddress}
+								</Text>
+							) : (
+								<Text style={[styles.menuSubtext, { color: colors.textLight }]}>Set your delivery address</Text>
+							)}
 						</View>
 						<Ionicons name='chevron-forward' size={20} color={colors.textLight} />
 					</TouchableOpacity>
@@ -203,7 +264,15 @@ export default function ProfileScreen() {
 						</View>
 						<View style={styles.menuContent}>
 							<Text style={[styles.menuText, { color: colors.text }]}>Payment Methods</Text>
-							<Text style={[styles.menuSubtext, { color: colors.textLight }]}>Manage payment options</Text>
+							{paymentMethod ? (
+								<Text style={[styles.menuSubtext, { color: colors.textLight }]}>
+									{paymentMethod === 'cash_on_delivery' ? 'Cash on Delivery' : 
+									 paymentMethod === 'online_payment' ? 'Online Payment' : 
+									 paymentMethod === 'bank_transfer' ? 'Bank Transfer' : paymentMethod}
+								</Text>
+							) : (
+								<Text style={[styles.menuSubtext, { color: colors.textLight }]}>Set your payment method</Text>
+							)}
 						</View>
 						<Ionicons name='chevron-forward' size={20} color={colors.textLight} />
 					</TouchableOpacity>

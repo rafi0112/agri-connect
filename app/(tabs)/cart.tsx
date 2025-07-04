@@ -13,6 +13,7 @@ import {
 	StatusBar,
 	Dimensions,
 	ScrollView,
+	SectionList,
 } from 'react-native';
 import { Picker } from '@react-native-picker/picker';
 import { useCart } from '../../context/CartProvider';
@@ -46,6 +47,8 @@ export default function CartScreen() {
 		updateQuantity,
 		clearCart,
 		loading,
+		refreshCart,
+		removeShopItems
 	} = useCart();
 	const { user } = useAuth();
 	const [placingOrder, setPlacingOrder] = useState(false);
@@ -57,11 +60,12 @@ export default function CartScreen() {
 	const [processingPayment, setProcessingPayment] = useState(false);
 	const [advancePaymentAmount, setAdvancePaymentAmount] = useState(0);
 	const [showAdvancePaymentModal, setShowAdvancePaymentModal] = useState(false);
+	const [currentShopId, setCurrentShopId] = useState<string | null>(null);
 	const db = getFirestore(app);
 	const navigation = useNavigation();
 	const colorScheme = useColorScheme();
 	const colors = Colors[colorScheme ?? 'light'];
-
+	
 	// Calculate advance payment (10% for COD)
 	const calculateAdvancePayment = (total: number, paymentMethod: string) => {
 		if (paymentMethod === 'cash_on_delivery') {
@@ -189,7 +193,7 @@ export default function CartScreen() {
 		formatLocationForStorage(location);
 	};
 
-	const initiateOnlinePayment = async (orderId: string, isAdvancePayment: boolean = false) => {
+	const initiateOnlinePayment = async (orderId: string, isAdvancePayment: boolean = false, shopTotal: number = 0) => {
 		if (!user) return false;
 
 		try {
@@ -200,8 +204,11 @@ export default function CartScreen() {
 			const customerName = user.name || user.email.split('@')[0];
 			const address = selectedLocation?.address || deliveryAddress || 'Dhaka, Bangladesh';
 			
-			// Calculate payment amount based on payment type
-			const paymentAmount = isAdvancePayment ? advancePaymentAmount : total;
+			// Calculate payment amount based on payment type and shop total
+			const paymentAmount = isAdvancePayment ? 
+				calculateShopAdvancePayment(shopTotal, paymentMethod) : 
+				shopTotal;
+				
 			const productDescription = isAdvancePayment 
 				? `Advance Payment (10%) for Order #${orderId}` 
 				: `Agricultural Products Order #${orderId}`;
@@ -253,7 +260,7 @@ export default function CartScreen() {
 				orderId,
 				amount: paymentAmount,
 				isAdvancePayment,
-				totalAmount: total,
+				totalAmount: shopTotal,
 				timestamp: Date.now(),
 			}));
 
@@ -282,7 +289,7 @@ export default function CartScreen() {
 		}
 	};
 
-	const handlePlaceOrder = async () => {
+	const handlePlaceOrder = async (shopId: string) => {
 		if (!user) {
 			Toast.show({
 				type: 'error',
@@ -292,11 +299,12 @@ export default function CartScreen() {
 			return;
 		}
 
-		if (cartItems.length === 0) {
+		const shopItems = cartItems.filter(item => item.shopId === shopId);
+		if (shopItems.length === 0) {
 			Toast.show({
 				type: 'error',
 				text1: 'Order Failed',
-				text2: 'Your cart is empty',
+				text2: 'No items for this shop',
 			});
 			return;
 		}
@@ -309,6 +317,9 @@ export default function CartScreen() {
 			});
 			return;
 		}
+		
+		// Store the current shop ID for the order process
+		setCurrentShopId(shopId);
 
 		// For Cash on Delivery, show advance payment modal
 		if (paymentMethod === 'cash_on_delivery') {
@@ -317,22 +328,35 @@ export default function CartScreen() {
 		}
 
 		// For online payment, proceed normally
-		await proceedWithOrder();
+		await proceedWithOrder(false, shopId);
 	};
 
-	const proceedWithOrder = async (isAdvancePayment: boolean = false) => {
-		if (!user) return;
+	const proceedWithOrder = async (isAdvancePayment: boolean = false, shopId: string = currentShopId || '') => {
+		if (!user || !shopId) return;
 
 		setPlacingOrder(true);
 		try {
+			// Filter items for this specific shop
+			const shopItems = cartItems.filter(item => item.shopId === shopId);
+			if (shopItems.length === 0) {
+				throw new Error('No items found for this shop');
+			}
+			
+			// Calculate total for this shop
+			const shopTotal = shopItems.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+			const shopAdvancePayment = calculateShopAdvancePayment(shopTotal, paymentMethod);
+			
 			// Generate a unique order ID that we'll use as transaction ID for online payments
 			const orderId = `ORDER_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+			
+			// Find shop name
+			const shopName = shopItems[0].shopName || 'Unknown Shop';
 			
 			// Create order document with shop information
 			const orderData: any = {
 				userId: user.id,
 				userEmail: user.email,
-				items: cartItems.map((item) => ({
+				items: shopItems.map((item) => ({
 					id: item.id,
 					name: item.name,
 					price: item.price,
@@ -343,7 +367,9 @@ export default function CartScreen() {
 					shopName: item.shopName,
 					farmerId: item.farmerId,
 				})),
-				total: total,
+				total: shopTotal,
+				shopId: shopId,
+				shopName: shopName,
 				status: 'pending',
 				createdAt: new Date(),
 				deliveryAddress: selectedLocation?.address || deliveryAddress,
@@ -351,8 +377,8 @@ export default function CartScreen() {
 				paymentMethod: paymentMethod,
 				paymentStatus: paymentMethod === 'online_payment' ? 'pending' : 
 							   (isAdvancePayment ? 'advance_paid' : 'cash_on_delivery'),
-				advancePaymentAmount: isAdvancePayment ? advancePaymentAmount : 0,
-				remainingAmount: isAdvancePayment ? (total - advancePaymentAmount) : 0,
+				advancePaymentAmount: isAdvancePayment ? shopAdvancePayment : 0,
+				remainingAmount: isAdvancePayment ? (shopTotal - shopAdvancePayment) : 0,
 			};
 
 			// Add location in the requested format if available
@@ -364,10 +390,42 @@ export default function CartScreen() {
 			// Create order with specific ID for online payments
 			const orderRef = doc(db, 'orders', orderId);
 			await setDoc(orderRef, orderData);
+			
+			// Update product stock in Firestore for each ordered item
+			const stockUpdatePromises = shopItems.map(async (item) => {
+				try {
+					const productRef = doc(db, 'products', item.id);
+					const productSnap = await getDoc(productRef);
+					
+					if (productSnap.exists()) {
+						const productData = productSnap.data();
+						const currentStock = productData.stock || 0;
+						const newStock = Math.max(0, currentStock - item.quantity);
+						
+						console.log(`Updating stock for product ${item.id}: ${currentStock} -> ${newStock}`);
+						
+						// Update the stock in Firestore
+						await setDoc(
+							productRef, 
+							{ 
+								stock: newStock,
+								lastUpdated: new Date()
+							}, 
+							{ merge: true }
+						);
+					}
+				} catch (error) {
+					console.error(`Error updating stock for product ${item.id}:`, error);
+				}
+			});
+			
+			// Wait for all stock updates to complete
+			await Promise.all(stockUpdatePromises);
+			console.log('All product stocks updated successfully');
 
 			// Handle payment based on method
 			if (paymentMethod === 'online_payment') {
-				const paymentSuccess = await initiateOnlinePayment(orderId);
+				const paymentSuccess = await initiateOnlinePayment(orderId, false, shopTotal);
 				if (!paymentSuccess) {
 					// If payment fails, we keep the order but mark it as payment failed
 					await setDoc(orderRef, { paymentStatus: 'failed' }, { merge: true });
@@ -375,7 +433,7 @@ export default function CartScreen() {
 				}
 			} else if (paymentMethod === 'cash_on_delivery' && isAdvancePayment) {
 				// Handle advance payment for COD
-				const paymentSuccess = await initiateOnlinePayment(orderId, true);
+				const paymentSuccess = await initiateOnlinePayment(orderId, true, shopTotal);
 				if (!paymentSuccess) {
 					// If advance payment fails, we keep the order but mark it as payment failed
 					await setDoc(orderRef, { paymentStatus: 'failed' }, { merge: true });
@@ -383,21 +441,39 @@ export default function CartScreen() {
 				}
 			}
 
-			// Clear the user's cart after successful order
+			// Remove only the items from this shop from the user's cart
+			const remainingItems = cartItems.filter(item => item.shopId !== shopId);
+			
+			// Update the cart with the remaining items
 			const cartRef = doc(db, 'carts', user.id);
-			await setDoc(cartRef, { items: [] });
+			await setDoc(cartRef, { 
+				items: remainingItems,
+				userEmail: user.email, // Include user email with cart data
+				lastUpdated: new Date()
+			});
+			
+			// Use our new function to remove only this shop's items from the cart
+			removeShopItems(shopId);
+			
+			Toast.show({
+				type: 'info',
+				text1: 'Cart Updated',
+				text2: 'Items from other shops remain in your cart',
+				position: 'bottom',
+			});
 
 			const orderMessage = isAdvancePayment 
-				? `Order #${orderId} placed! Advance payment of ৳${advancePaymentAmount.toFixed(2)} processed. Remaining ৳${(total - advancePaymentAmount).toFixed(2)} will be collected on delivery.`
-				: `Order #${orderId} placed successfully!`;
+				? `Order #${orderId} placed with ${shopName}! Advance payment of ৳${shopAdvancePayment.toFixed(2)} processed. Remaining ৳${(shopTotal - shopAdvancePayment).toFixed(2)} will be collected on delivery.`
+				: `Order #${orderId} placed successfully with ${shopName}!`;
 
 			Toast.show({
 				type: 'success',
 				text1: 'Order Successful',
 				text2: orderMessage,
 			});
-			clearCart();
+			
 			setShowAdvancePaymentModal(false);
+			setCurrentShopId(null);
 
 			// Navigate to orders page
 			navigation.navigate('orders' as never);
@@ -410,6 +486,91 @@ export default function CartScreen() {
 			});
 		} finally {
 			setPlacingOrder(false);
+		}
+	};
+
+	// Group cart items by shop
+	const groupCartItemsByShop = () => {
+		// Create a map of shops with their items
+		const shopMap = new Map();
+		
+		cartItems.forEach(item => {
+			const shopId = item.shopId || 'unknown';
+			const shopName = item.shopName || 'Unknown Shop';
+			
+			if (!shopMap.has(shopId)) {
+				shopMap.set(shopId, {
+					shopId,
+					shopName,
+					items: [],
+					total: 0
+				});
+			}
+			
+			const shop = shopMap.get(shopId);
+			shop.items.push(item);
+			shop.total += item.price * item.quantity;
+		});
+		
+		// Convert map to array for SectionList
+		return Array.from(shopMap.values()).map(shop => ({
+			shopId: shop.shopId,
+			shopName: shop.shopName,
+			total: shop.total,
+			data: shop.items
+		}));
+	};
+	
+	const shopSections = groupCartItemsByShop();
+	
+	// Calculate shop-specific total
+	const getShopTotal = (shopId: string) => {
+		return cartItems
+			.filter(item => item.shopId === shopId)
+			.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+	};
+
+	// Calculate advance payment for a specific shop (10% for COD)
+	const calculateShopAdvancePayment = (shopTotal: number, paymentMethod: string) => {
+		if (paymentMethod === 'cash_on_delivery') {
+			return Math.round(shopTotal * 0.1 * 100) / 100; // 10% rounded to 2 decimals
+		}
+		return 0;
+	};
+
+	// Add a function to refresh the cart
+	const onRefresh = async () => {
+		try {
+			if (refreshCart) {
+				await refreshCart();
+				
+				// Check if any items are at stock limit
+				const stockLimitItems = cartItems.filter(item => item.stockLimit);
+				
+				if (stockLimitItems.length > 0) {
+					Toast.show({
+						type: 'info',
+						text1: 'Stock Information Updated',
+						text2: `${stockLimitItems.length} item(s) have reached stock limits`,
+						position: 'bottom',
+					});
+				} else {
+					Toast.show({
+						type: 'success',
+						text1: 'Cart Refreshed',
+						text2: 'Your cart has been updated with latest stock information',
+						position: 'bottom',
+					});
+				}
+			}
+		} catch (error) {
+			console.error('Error refreshing cart:', error);
+			Toast.show({
+				type: 'error',
+				text1: 'Refresh Failed',
+				text2: 'Could not update cart information',
+				position: 'bottom',
+			});
 		}
 	};
 
@@ -464,9 +625,46 @@ export default function CartScreen() {
 						</LinearGradient>
 					</View>
 				
-					<FlatList
-						data={cartItems}
+					<SectionList
+						sections={shopSections}
 						keyExtractor={(item) => item.id}
+						refreshing={loading}
+						onRefresh={onRefresh}
+						renderSectionHeader={({ section }) => (
+							<View style={[styles.shopHeader, { backgroundColor: colors.cardAlt }]}>
+								<View style={styles.shopHeaderLeft}>
+									<Ionicons name="storefront" size={20} color={colors.primary} />
+									<Text style={[styles.shopHeaderName, { color: colors.text }]}>
+										{section.shopName}
+									</Text>
+								</View>
+								
+								{paymentMethod && (
+									<TouchableOpacity
+										style={[styles.placeOrderButton, { 
+											backgroundColor: paymentMethod === 'cash_on_delivery' ? 
+												colors.warning : colors.primary 
+										}]}
+										onPress={() => handlePlaceOrder(section.shopId)}
+										disabled={placingOrder && currentShopId === section.shopId}
+									>
+										{placingOrder && currentShopId === section.shopId ? (
+											<ActivityIndicator size="small" color="#fff" />
+										) : (
+											<>
+												<Text style={styles.placeOrderButtonText}>Place Order</Text>
+												<Ionicons 
+													name={paymentMethod === 'cash_on_delivery' ? 'cash-outline' : 'card-outline'} 
+													size={16} 
+													color="#fff" 
+													style={{ marginLeft: 4 }} 
+												/>
+											</>
+										)}
+									</TouchableOpacity>
+								)}
+							</View>
+						)}
 						renderItem={({ item }) => (
 							<View style={[styles.cartCard, { backgroundColor: colors.card }]}>
 								<View style={styles.itemImageWrapper}>
@@ -474,213 +672,244 @@ export default function CartScreen() {
 										source={{ uri: item.image || 'https://via.placeholder.com/150' }}
 										style={styles.itemImage}
 									/>
-								</View>
-								<View style={styles.itemContent}>
+								</View>									<View style={styles.itemContent}>
 									<View style={styles.itemInfo}>
 										<Text style={[styles.itemName, { color: colors.text }]}>{item.name}</Text>
-										<Text style={[styles.itemPrice, { color: colors.primary }]}>
-											৳{item.price.toFixed(2)}/{item.unit}
-										</Text>
-										{item.shopName && (
-											<View style={styles.shopInfoRow}>
-												<Ionicons name="storefront-outline" size={14} color={colors.textLight} />
-												<Text style={[styles.shopName, { color: colors.textLight }]}>
-													{item.shopName}
-												</Text>
-											</View>
-										)}
+										<View style={styles.priceStockRow}>
+											<Text style={[styles.itemPrice, { color: colors.primary }]}>
+												৳{item.price.toFixed(2)}/{item.unit}
+											</Text>
+											
+											{item.stockQty !== undefined && (
+												<View style={[styles.stockBadge, { 
+													backgroundColor: item.stockLimit 
+														? `${colors.error}20` 
+														: `${colors.success}20`,
+													borderColor: item.stockLimit 
+														? `${colors.error}50` 
+														: `${colors.success}50`,
+												}]}>
+													<Ionicons 
+														name={item.stockLimit ? 'alert-circle' : 'checkmark-circle'} 
+														size={14} 
+														color={item.stockLimit ? colors.error : colors.success} 
+														style={styles.stockIcon}
+													/>
+													<Text style={[styles.stockInfo, { 
+														color: item.stockLimit ? colors.error : colors.success,
+														fontWeight: item.stockLimit ? 'bold' : 'normal'
+													}]}>
+														{item.stockLimit 
+															? `${item.quantity}/${item.stockQty} (Max)` 
+															: `${item.stockQty - item.quantity} more available`}
+													</Text>
+												</View>
+											)}
+										</View>
 									</View>
 									<View style={styles.itemActions}>
-										<View style={[styles.quantityContainer, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>
-											<TouchableOpacity
-												onPress={() => updateQuantity(item.id, item.quantity - 1)}
-												disabled={item.quantity <= 1}
-												style={[
-													styles.quantityButton, 
-													item.quantity <= 1 && styles.quantityButtonDisabled
-												]}
-											>
-												<Ionicons
-													name='remove'
-													size={18}
-													color={item.quantity <= 1 ? colors.textLight : colors.primary}
-												/>
-											</TouchableOpacity>
-											<Text style={[styles.quantity, { color: colors.text }]}>{item.quantity}</Text>
-											<TouchableOpacity
-												onPress={() => {
-													// Check product stock before increasing quantity
-													const checkStock = async () => {
-														try {
-															const productRef = doc(db, 'products', item.id);
-															const productSnap = await getDoc(productRef);
+										<View style={[styles.quantityContainer, { backgroundColor: `${colors.primary}10`, borderColor: `${colors.primary}30` }]}>										<TouchableOpacity
+											onPress={() => updateQuantity(item.id, item.quantity - 1)}
+											disabled={item.quantity <= 1}
+											style={[
+												styles.quantityButton, 
+												item.quantity <= 1 && styles.quantityButtonDisabled
+											]}
+										>
+											<Ionicons
+												name='remove'
+												size={18}
+												color={item.quantity <= 1 ? colors.textLight : colors.primary}
+											/>
+										</TouchableOpacity>										<Text style={[styles.quantity, { color: colors.text }]}>
+											{item.quantity}
+											{item.stockLimit && (
+												<Text style={{ color: colors.error, fontSize: 12, fontWeight: 'bold' }}> (max)</Text>
+											)}
+										</Text>
+										<TouchableOpacity
+											onPress={() => {
+												// Check product stock before increasing quantity
+												const checkStock = async () => {
+													try {
+														const productRef = doc(db, 'products', item.id);
+														const productSnap = await getDoc(productRef);
+														
+														if (productSnap.exists()) {
+															const productData = productSnap.data();
+															const stockQty = productData.stock || 0;
 															
-															if (productSnap.exists()) {
-																const productData = productSnap.data();
-																const stock = productData.stock || 0;
+															if (item.quantity < stockQty) {
+																// Pass the stock quantity to updateQuantity
+																updateQuantity(item.id, item.quantity + 1, stockQty);
 																
-																if (item.quantity < stock) {
-																	updateQuantity(item.id, item.quantity + 1);
-																} else {
+																// Show remaining stock in toast if getting low
+																if (item.quantity + 1 >= stockQty - 3 && stockQty > 0) {
 																	Toast.show({
-																		type: 'error',
-																		text1: 'Stock Limit Reached',
-																		text2: `Only ${stock} units available`,
+																		type: 'info',
+																		text1: 'Stock Running Low',
+																		text2: `Only ${stockQty - (item.quantity + 1)} more available`,
+																		position: 'bottom',
 																	});
 																}
+															} else {
+																// Update with current quantity but mark as at limit
+																updateQuantity(item.id, item.quantity, stockQty);
+																
+																Toast.show({
+																	type: 'error',
+																	text1: 'Stock Limit',
+																	text2: `Only ${stockQty} items available in stock`
+																});
 															}
-														} catch (error) {
-															console.error('Error checking stock:', error);
-															Toast.show({
-																type: 'error',
-																text1: 'Error',
-																text2: 'Could not update quantity',
-															});
+														} else {
+															updateQuantity(item.id, item.quantity + 1);
 														}
-													};
-												
-													checkStock();
-												}}
-												style={styles.quantityButton}
-											>
-												<Ionicons
-													name='add'
-													size={18}
-													color={colors.primary}
-												/>
+													} catch (error) {
+														console.error('Error checking stock:', error);
+														updateQuantity(item.id, item.quantity + 1);
+													}
+												};
+											
+												checkStock();
+											}}
+											style={[
+												styles.quantityButton,
+												item.stockLimit && styles.quantityButtonDisabled
+											]}
+											disabled={item.stockLimit}
+										>
+											<Ionicons 
+												name='add' 
+												size={18} 
+												color={item.stockLimit ? colors.textLight : colors.primary} 
+											/>
 											</TouchableOpacity>
 										</View>
 										<TouchableOpacity
-											style={[styles.removeButton, { backgroundColor: `${colors.error}15` }]
-											}
 											onPress={() => removeFromCart(item.id)}
+											style={styles.removeButton}
 										>
-											<Ionicons name='trash-outline' size={18} color={colors.error} />
+											<Ionicons name='trash-outline' size={20} color={colors.error} />
 										</TouchableOpacity>
 									</View>
 								</View>
 							</View>
 						)}
-						contentContainerStyle={styles.cartList}
-					/>
-
-					<View style={[styles.orderSummaryCard, { backgroundColor: colors.card }]}>
-						<View style={styles.summaryRow}>
-							<Text style={[styles.summaryLabel, { color: colors.textLight }]}>Subtotal:</Text>
-							<Text style={[styles.summaryValue, { color: colors.text }]}>৳{total.toFixed(2)}</Text>
-						</View>
-						<View style={styles.summaryRow}>
-							<Text style={[styles.summaryLabel, { color: colors.textLight }]}>Delivery Fee:</Text>
-							<Text style={[styles.summaryValue, { color: colors.text }]}>৳0.00</Text>
-						</View>
-						<View style={styles.divider} />
-						<View style={styles.summaryRow}>
-							<Text style={[styles.totalLabel, { color: colors.text }]}>Total:</Text>
-							<Text style={[styles.totalValue, { color: colors.primary }]}>৳{total.toFixed(2)}</Text>
-						</View>
-
-						{/* Show advance payment breakdown for COD */}
-						{paymentMethod === 'cash_on_delivery' && (
-							<View style={[styles.advanceSummary, { 
-								backgroundColor: `${colors.warning}10`,
-								borderColor: `${colors.warning}30`,
-							}]}
-							>
-								<Text style={[styles.advanceSummaryTitle, { color: colors.warning }]}>
-									Payment Breakdown:
-								</Text>
-								<View style={styles.advanceBreakdownRow}>
-									<Text style={[styles.advanceLabel, { color: colors.warning }]}>
-										Online Advance (10%):
-									</Text>
-									<Text style={[styles.advanceAmount, { color: colors.warning }]}>
-										৳{advancePaymentAmount.toFixed(2)}
+						renderSectionFooter={({ section }) => (
+							<View style={styles.shopFooter}>
+								<View style={[styles.shopTotal, { backgroundColor: `${colors.primary}10` }]}>
+									<Text style={{ color: colors.textLight }}>Shop Total:</Text>
+									<Text style={[styles.shopTotalAmount, { color: colors.primary }]}>
+										৳{section.total.toFixed(2)}
 									</Text>
 								</View>
-								<View style={styles.advanceBreakdownRow}>
-									<Text style={[styles.advanceLabel, { color: colors.warning }]}>
-										Cash on Delivery:
-									</Text>
-									<Text style={[styles.advanceAmount, { color: colors.warning }]}>
-										৳{(total - advancePaymentAmount).toFixed(2)}
-									</Text>
+								
+								{/* Stock information summary for the shop */}
+								{section.data.some((item: any) => item.stockQty !== undefined) && (
+									<View style={styles.stockSummaryContainer}>
+										{section.data.some((item: any) => item.stockLimit) && (
+											<View style={[styles.stockWarning, { backgroundColor: `${colors.error}15`, borderColor: `${colors.error}30` }]}>
+												<Ionicons name="alert-circle" size={16} color={colors.error} style={{ marginRight: 6 }} />
+												<Text style={{ color: colors.error, fontSize: 13 }}>
+													Some items have reached stock limits
+												</Text>
+											</View>
+										)}
+										
+										<Text style={[styles.stockSummaryTitle, { color: colors.textLight }]}>
+											Stock Information:
+										</Text>
+										
+										{section.data.map((item: any) => (
+											item.stockQty !== undefined && (
+												<View key={`stock-${item.id}`} style={styles.stockSummaryItem}>
+													<Text 
+														numberOfLines={1} 
+														ellipsizeMode="tail" 
+														style={[styles.stockItemName, { color: colors.text }]}
+													>
+														{item.name}:
+													</Text>
+													<Text style={{ 
+														color: item.stockLimit ? colors.error : colors.success,
+														fontWeight: item.stockLimit ? 'bold' : 'normal',
+														fontSize: 13
+													}}>
+														{item.quantity}/{item.stockQty} {item.unit}
+													</Text>
+												</View>
+											)
+										))}
+									</View>
+								)}
+							</View>
+						)}
+						ListFooterComponent={() => (
+							<View style={styles.cartFooter}>
+								<View style={[styles.totalContainer, { backgroundColor: `${colors.primary}15`, borderColor: `${colors.primary}30` }]}>
+									<Text style={[styles.totalLabel, { color: colors.text }]}>Total Amount:</Text>
+									<Text style={[styles.totalAmount, { color: colors.primary }]}>৳{total.toFixed(2)}</Text>
+								</View>
+								
+								{paymentMethod === 'cash_on_delivery' && (
+									<View style={[styles.advanceContainer, { backgroundColor: `${colors.warning}15`, borderColor: `${colors.warning}30` }]}>
+										<Text style={[styles.advanceLabel, { color: colors.warning }]}>
+											Advance Payment (10%):
+										</Text>
+										<Text style={[styles.advanceAmount, { color: colors.warning }]}>
+											৳{advancePaymentAmount.toFixed(2)}
+										</Text>
+									</View>
+								)}
+
+								<View style={styles.actionButtons}>
+									<TouchableOpacity
+										style={[styles.clearButton, { borderColor: colors.error }]}
+										onPress={clearCart}
+									>
+										<Ionicons name="trash-outline" size={18} color={colors.error} />
+										<Text style={[styles.clearButtonText, { color: colors.error }]}>Clear</Text>
+									</TouchableOpacity>
+
+									<TouchableOpacity 
+										style={styles.toggleButton}
+										onPress={toggleModal}
+									>
+										<LinearGradient
+											colors={[colors.primary, colors.primaryLight]}
+											start={{ x: 0, y: 0 }}
+											end={{ x: 1, y: 0 }}
+											style={styles.toggleButtonGradient}
+										>
+											<Ionicons name="location-outline" size={20} color="#fff" />
+											<Text style={styles.toggleButtonText}>Delivery Details</Text>
+										</LinearGradient>
+									</TouchableOpacity>
+
+									{!paymentMethod && (
+										<TouchableOpacity 
+											style={styles.selectPaymentButton}
+											onPress={toggleModal}
+										>
+											<LinearGradient
+												colors={[colors.info, colors.blue]}
+												start={{ x: 0, y: 0 }}
+												end={{ x: 1, y: 0 }}
+												style={styles.selectPaymentGradient}
+											>
+												<Ionicons name="card-outline" size={20} color="#fff" />
+												{/* <Text style={styles.selectPaymentText}>Select Payment</Text> */}
+											</LinearGradient>
+										</TouchableOpacity>
+									)}
 								</View>
 							</View>
 						)}
+						contentContainerStyle={{ paddingBottom: 120 }}
+					/>
 
-						<View style={styles.actionButtons}>
-							<TouchableOpacity
-								style={[styles.clearButton, { borderColor: colors.error }]}
-								onPress={clearCart}
-							>
-								<Ionicons name="trash-outline" size={18} color={colors.error} />
-								<Text style={[styles.clearButtonText, { color: colors.error }]}>Clear</Text>
-							</TouchableOpacity>
-
-							<TouchableOpacity 
-								style={styles.toggleButton}
-								onPress={toggleModal}
-							>
-								<LinearGradient
-									colors={[colors.primary, colors.primaryLight]}
-									start={{ x: 0, y: 0 }}
-									end={{ x: 1, y: 0 }}
-									style={styles.toggleButtonGradient}
-								>
-									<Ionicons name="location-outline" size={20} color="#fff" />
-									<Text style={styles.toggleButtonText}>Delivery Details</Text>
-								</LinearGradient>
-							</TouchableOpacity>
-
-							{paymentMethod ? (
-								<TouchableOpacity
-									style={styles.orderButton}
-									onPress={handlePlaceOrder}
-									disabled={placingOrder || processingPayment}
-								>
-									<LinearGradient
-										colors={paymentMethod === 'cash_on_delivery' ? 
-											[colors.warning, colors.orange] : 
-											[colors.primary, colors.primaryLight]
-										}
-										start={{ x: 0, y: 0 }}
-										end={{ x: 1, y: 0 }}
-										style={styles.orderButtonGradient}
-									>
-										{placingOrder || processingPayment ? (
-											<ActivityIndicator color='#fff' size="small" />
-										) : (
-											<>
-												<Ionicons
-													name={paymentMethod === 'cash_on_delivery' ? 'cash-outline' : 'card-outline'}
-													size={20}
-													color='#fff'
-												/>
-												<Text style={styles.orderButtonText}>
-													{paymentMethod === 'cash_on_delivery' ? 'Place COD Order' : 'Click to \nPay Now'}
-												</Text>
-											</>
-										)}
-									</LinearGradient>
-								</TouchableOpacity>
-							) : (
-								<TouchableOpacity 
-									style={styles.selectPaymentButton}
-									onPress={toggleModal}
-								>
-									<LinearGradient
-										colors={[colors.info, colors.blue]}
-										start={{ x: 0, y: 0 }}
-										end={{ x: 1, y: 0 }}
-										style={styles.selectPaymentGradient}
-									>
-										<Ionicons name="card-outline" size={20} color="#fff" />
-										<Text style={styles.selectPaymentText}>Select Payment</Text>
-									</LinearGradient>
-								</TouchableOpacity>
-							)}
-						</View>
-					</View>
+					<View style={styles.cartFooterSpacer} />
 
 					<Modal
 						visible={isModalVisible}
@@ -856,53 +1085,64 @@ export default function CartScreen() {
 									</Text>
 								</View>
 								
-								<Text style={[styles.advancePaymentSubtitle, { color: colors.textLight }]}
-								>
-									To confirm your cash on delivery order, you need to pay an advance amount online.
-								</Text>
+								{currentShopId && (
+									<>
+										{shopSections.filter(shop => shop.shopId === currentShopId).map(shop => (
+											<View key={shop.shopId}>
+												<Text style={[styles.shopOrderTitle, { color: colors.primary }]}>
+													Order from: {shop.shopName}
+												</Text>
+												
+												<Text style={[styles.advancePaymentSubtitle, { color: colors.textLight }]}>
+													To confirm your cash on delivery order, you need to pay an advance amount online.
+												</Text>
 
-								<View style={[styles.paymentBreakdown, { backgroundColor: `${colors.primary}05` }]}
-								>
-									<View style={styles.breakdownRow}>
-										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
-										>
-											Total Order Amount:
-										</Text>
-										<Text style={[styles.breakdownAmount, { color: colors.text }]}
-										>
-											৳{total.toFixed(2)}
-										</Text>
-									</View>
-									<View style={styles.breakdownRow}>
-										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
-										>
-											Advance Payment (10%):
-										</Text>
-										<Text style={[styles.breakdownAmountHighlight, { color: colors.warning }]}
-										>
-											৳{advancePaymentAmount.toFixed(2)}
-										</Text>
-									</View>
-									<View style={styles.breakdownRow}>
-										<Text style={[styles.breakdownLabel, { color: colors.textLight }]}
-										>
-											Cash on Delivery:
-										</Text>
-										<Text style={[styles.breakdownAmount, { color: colors.text }]}
-										>
-											৳{(total - advancePaymentAmount).toFixed(2)}
-										</Text>
-									</View>
-								</View>
+												<View style={[styles.paymentBreakdown, { backgroundColor: `${colors.primary}05` }]}>
+													<View style={styles.breakdownRow}>
+														<Text style={[styles.breakdownLabel, { color: colors.textLight }]}>
+															Total Order Amount:
+														</Text>
+														<Text style={[styles.breakdownAmount, { color: colors.text }]}>
+															৳{shop.total.toFixed(2)}
+														</Text>
+													</View>
+													
+													{/* Calculate shop-specific advance payment */}
+													{(() => {
+														const shopAdvance = calculateShopAdvancePayment(shop.total, paymentMethod);
+														return (
+															<>
+																<View style={styles.breakdownRow}>
+																	<Text style={[styles.breakdownLabel, { color: colors.textLight }]}>
+																		Advance Payment (10%):
+																	</Text>
+																	<Text style={[styles.breakdownAmountHighlight, { color: colors.warning }]}>
+																		৳{shopAdvance.toFixed(2)}
+																	</Text>
+																</View>
+																<View style={styles.breakdownRow}>
+																	<Text style={[styles.breakdownLabel, { color: colors.textLight }]}>
+																		Cash on Delivery:
+																	</Text>
+																	<Text style={[styles.breakdownAmount, { color: colors.text }]}>
+																		৳{(shop.total - shopAdvance).toFixed(2)}
+																	</Text>
+																</View>
+															</>
+														);
+													})()}
+												</View>
 
-								<View style={[styles.advancePaymentInfo, { backgroundColor: `${colors.info}15` }]}
-								>
-									<Ionicons name="information-circle-outline" size={20} color={colors.info} />
-									<Text style={[styles.advancePaymentInfoText, { color: colors.info }]}
-									>
-										You'll pay ৳{advancePaymentAmount.toFixed(2)} now via SSL Commerz and the remaining ৳{(total - advancePaymentAmount).toFixed(2)} will be collected upon delivery.
-									</Text>
-								</View>
+												<View style={[styles.advancePaymentInfo, { backgroundColor: `${colors.info}15` }]}>
+													<Ionicons name="information-circle-outline" size={20} color={colors.info} />
+													<Text style={[styles.advancePaymentInfoText, { color: colors.info }]}>
+														You'll pay the advance now via SSL Commerz and the remaining amount will be collected upon delivery.
+													</Text>
+												</View>
+											</View>
+										))}
+									</>
+								)}
 
 								<View style={styles.floatingButtonContainer}>
 									<TouchableOpacity
@@ -921,9 +1161,14 @@ export default function CartScreen() {
 											) : (
 												<>
 													<Ionicons name="card-outline" size={20} color="#fff" />
-													<Text style={styles.payAdvanceButtonText}>
-														Pay Advance ৳{advancePaymentAmount.toFixed(2)}
-													</Text>
+													{currentShopId && shopSections.filter(shop => shop.shopId === currentShopId).map(shop => {
+														const shopAdvance = calculateShopAdvancePayment(shop.total, paymentMethod);
+														return (
+															<Text key={shop.shopId} style={styles.payAdvanceButtonText}>
+																Pay Advance ৳{shopAdvance.toFixed(2)}
+															</Text>
+														);
+													})}
 												</>
 											)}
 										</LinearGradient>
@@ -934,11 +1179,13 @@ export default function CartScreen() {
 											borderColor: colors.border,
 											backgroundColor: colors.cardAlt 
 										}]}
-										onPress={() => setShowAdvancePaymentModal(false)}
+										onPress={() => {
+											setShowAdvancePaymentModal(false);
+											setCurrentShopId(null);
+										}}
 										disabled={placingOrder || processingPayment}
 									>
-										<Text style={[styles.cancelAdvanceButtonText, { color: colors.textLight }]}
-										>
+										<Text style={[styles.cancelAdvanceButtonText, { color: colors.textLight }]}>
 											Cancel
 										</Text>
 									</TouchableOpacity>
@@ -993,262 +1240,102 @@ const styles = StyleSheet.create({
 		color: 'rgba(255, 255, 255, 0.8)',
 		fontWeight: '500',
 	},
-	emptyContainer: {
-		flex: 1,
-		justifyContent: 'center',
-		alignItems: 'center',
-		padding: 40,
-		marginTop: -40,
-	},
-	emptyGradient: {
-		width: 160,
-		height: 160,
-		borderRadius: 80,
-		justifyContent: 'center',
-		alignItems: 'center',
-		marginBottom: 24,
-	},
-	emptyText: {
-		fontSize: 24,
-		fontWeight: 'bold',
-		marginBottom: 12,
-	},
-	emptySubtext: {
-		fontSize: 16,
-		textAlign: 'center',
-		marginBottom: 24,
-		paddingHorizontal: 20,
-		lineHeight: 22,
-	},
-	shopNowButton: {
+	// Shop header styles
+	shopHeader: {
 		flexDirection: 'row',
+		justifyContent: 'space-between',
 		alignItems: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 24,
-		borderRadius: 12,
-		marginTop: 16,
-	},
-	shopNowButtonText: {
-		color: 'white',
-		fontSize: 16,
-		fontWeight: 'bold',
-	},
-	cartList: {
-		padding: 16,
-		paddingBottom: 280, // Increased space for the fixed bottom panel and tab bar
-	},
-	cartCard: {
-		flexDirection: 'row',
-		borderRadius: 16,
-		marginBottom: 16,
-		overflow: 'hidden',
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: 2 },
-		shadowOpacity: 0.1,
-		shadowRadius: 8,
-		elevation: 3,
-	},
-	itemImageWrapper: {
-		width: 100,
-		height: 100,
-		backgroundColor: '#f5f7f3',
-	},
-	itemImage: {
-		width: '100%',
-		height: '100%',
-		resizeMode: 'cover',
-	},
-	itemContent: {
-		flex: 1,
 		padding: 12,
+		marginTop: 16,
+		marginBottom: 8,
+		marginHorizontal: 16,
+		borderRadius: 12,
+		elevation: 2,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.1,
+		shadowRadius: 2,
+	},
+	shopHeaderLeft: {
 		flexDirection: 'row',
-		justifyContent: 'space-between',
+		alignItems: 'center',
 	},
-	itemInfo: {
-		flex: 1,
-		marginRight: 8,
-	},
-	itemName: {
+	shopHeaderName: {
 		fontSize: 16,
 		fontWeight: '600',
-		marginBottom: 4,
+		marginLeft: 8,
 	},
-	itemPrice: {
-		fontSize: 15,
-		fontWeight: 'bold',
-		marginBottom: 4,
-	},
-	shopInfoRow: {
+	placeOrderButton: {
 		flexDirection: 'row',
 		alignItems: 'center',
-	},
-	shopName: {
-		fontSize: 12,
-		marginLeft: 4,
-	},
-	itemActions: {
-		justifyContent: 'space-between',
-	},
-	quantityContainer: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		borderRadius: 12,
-		borderWidth: 1,
-		marginBottom: 8,
-	},
-	quantityButton: {
-		padding: 6,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
 		borderRadius: 8,
 	},
-	quantityButtonDisabled: {
-		opacity: 0.5,
-	},
-	quantity: {
-		fontSize: 14,
+	placeOrderButtonText: {
+		color: '#fff',
 		fontWeight: '600',
-		paddingHorizontal: 8,
-	},
-	removeButton: {
-		padding: 8,
-		borderRadius: 8,
-		alignItems: 'center',
-		justifyContent: 'center',
-	},
-	orderSummaryCard: {
-		position: 'absolute',
-		bottom: 0,
-		left: 0,
-		right: 0,
-		padding: 20,
-		borderTopLeftRadius: 24,
-		borderTopRightRadius: 24,
-		shadowColor: '#000',
-		shadowOffset: { width: 0, height: -4 },
-		shadowOpacity: 0.1,
-		shadowRadius: 12,
-		elevation: 10,
-		paddingBottom: 36,
-	},
-	summaryRow: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		marginBottom: 8,
-	},
-	summaryLabel: {
 		fontSize: 14,
 	},
-	summaryValue: {
+	// Shop footer styles
+	shopFooter: {
+		paddingHorizontal: 16,
+		paddingBottom: 16,
+		borderBottomWidth: 1,
+		borderBottomColor: 'rgba(0,0,0,0.05)',
+	},
+	shopTotal: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		paddingHorizontal: 16,
+		paddingVertical: 10,
+		borderRadius: 8,
+		marginTop: 8,
+	},
+	shopTotalAmount: {
+		fontSize: 16,
+		fontWeight: '600',
+	},
+	stockSummaryContainer: {
+		marginTop: 12,
+		paddingHorizontal: 10,
+		paddingVertical: 12,
+		backgroundColor: 'rgba(0,0,0,0.02)',
+		borderRadius: 8,
+	},
+	stockWarning: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		borderRadius: 6,
+		borderWidth: 1,
+		marginBottom: 10,
+	},
+	stockSummaryTitle: {
 		fontSize: 14,
 		fontWeight: '500',
-	},
-	divider: {
-		height: 1,
-		backgroundColor: '#eaefea',
-		marginVertical: 12,
-	},
-	totalLabel: {
-		fontSize: 18,
-		fontWeight: 'bold',
-	},
-	totalValue: {
-		fontSize: 20,
-		fontWeight: 'bold',
-	},
-	advanceSummary: {
-		padding: 12,
-		borderRadius: 12,
-		marginTop: 12,
-		marginBottom: 16,
-		borderWidth: 1,
-	},
-	advanceSummaryTitle: {
-		fontWeight: '600',
 		marginBottom: 8,
-		fontSize: 14,
 	},
-	advanceBreakdownRow: {
+	stockSummaryItem: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
-		marginBottom: 4,
-	},
-	advanceLabel: {
-		fontSize: 13,
-	},
-	advanceAmount: {
-		fontSize: 13,
-		fontWeight: '600',
-	},
-	actionButtons: {
-		flexDirection: 'row',
-		marginTop: 16,
-		marginBottom: 94,
-	},
-	clearButton: {
-		flexDirection: 'row',
 		alignItems: 'center',
-		justifyContent: 'center',
-		paddingVertical: 10,
-		paddingHorizontal: 12,
-		borderWidth: 1,
-		borderRadius: 12,
-		marginRight: 8,
+		paddingVertical: 4,
 	},
-	clearButtonText: {
-		fontSize: 14,
-		fontWeight: '600',
-		marginLeft: 4,
-	},
-	toggleButton: {
+	stockItemName: {
+		fontSize: 13,
 		flex: 1,
 		marginRight: 8,
 	},
-	toggleButtonGradient: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 12,
+	// Cart footer
+	cartFooter: {
+		padding: 16,
+		marginTop: 16,
 	},
-	toggleButtonText: {
-		color: '#fff',
-		fontSize: 14,
-		fontWeight: '600',
-		marginLeft: 8,
-	},
-	orderButton: {
-		flex: 1.5,
-	},
-	orderButtonGradient: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 12,
-	},
-	orderButtonText: {
-		color: '#fff',
-		fontSize: 14,
-		fontWeight: '600',
-		marginLeft: 8,
-	},
-	selectPaymentButton: {
-		flex: 1.5,
-	},
-	selectPaymentGradient: {
-		flexDirection: 'row',
-		alignItems: 'center',
-		justifyContent: 'center',
-		paddingVertical: 12,
-		paddingHorizontal: 16,
-		borderRadius: 12,
-	},
-	selectPaymentText: {
-		color: '#fff',
-		fontSize: 14,
-		fontWeight: '600',
-		marginLeft: 8,
+	cartFooterSpacer: {
+		height: 80,
 	},
 	modalContainer: {
 		flex: 1,
@@ -1550,5 +1637,243 @@ const styles = StyleSheet.create({
 	cancelAdvanceButtonText: {
 		fontSize: 16,
 		fontWeight: '500',
+	},
+	cartCard: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginHorizontal: 16,
+		marginVertical: 8,
+		borderRadius: 14,
+		padding: 12,
+		elevation: 1,
+		shadowColor: '#000',
+		shadowOffset: { width: 0, height: 1 },
+		shadowOpacity: 0.06,
+		shadowRadius: 2,
+	},
+	itemImageWrapper: {
+		width: 60,
+		height: 60,
+		borderRadius: 10,
+		overflow: 'hidden',
+		marginRight: 14,
+		backgroundColor: '#f2f2f2',
+	},
+	itemImage: {
+		width: '100%',
+		height: '100%',
+		borderRadius: 10,
+		resizeMode: 'cover',
+	},
+	itemContent: {
+		flex: 1,
+		justifyContent: 'space-between',
+	},
+	itemInfo: {
+		marginBottom: 8,
+	},
+	itemName: {
+		fontSize: 16,
+		fontWeight: '600',
+	},
+	itemPrice: {
+		fontSize: 15,
+		fontWeight: '500',
+		marginTop: 2,
+	},
+	priceStockRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginTop: 4,
+	},
+	stockBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
+		borderWidth: 1,
+	},
+	stockIcon: {
+		marginRight: 4,
+	},
+	stockInfo: {
+		fontSize: 12,
+		fontStyle: 'italic',
+	},
+	itemActions: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginTop: 4,
+	},
+	quantityContainer: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderRadius: 8,
+		paddingHorizontal: 8,
+		paddingVertical: 2,
+		marginRight: 10,
+	},
+	quantityButton: {
+		padding: 4,
+		borderRadius: 6,
+	},
+	quantityButtonDisabled: {
+		opacity: 0.4,
+		backgroundColor: 'rgba(0,0,0,0.05)',
+	},
+	quantity: {
+		fontSize: 15,
+		fontWeight: '500',
+		marginHorizontal: 8,
+	},
+	removeButton: {
+		marginLeft: 8,
+		padding: 4,
+		borderRadius: 6,
+		backgroundColor: '#fff0f0',
+	},
+	totalContainer: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		padding: 14,
+		borderRadius: 10,
+		marginBottom: 10,
+		borderWidth: 1,
+	},
+	totalLabel: {
+		fontSize: 16,
+		fontWeight: '500',
+	},
+	totalAmount: {
+		fontSize: 18,
+		fontWeight: '700',
+	},
+	advanceContainer: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		padding: 10,
+		borderRadius: 8,
+		marginBottom: 10,
+		borderWidth: 1,
+	},
+	advanceLabel: {
+		fontSize: 15,
+		fontWeight: '500',
+	},
+	advanceAmount: {
+		fontSize: 16,
+		fontWeight: '700',
+	},
+	actionButtons: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginTop: 10,
+	},
+	clearButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderWidth: 1,
+		borderRadius: 8,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		marginRight: 10,
+	},
+	clearButtonText: {
+		fontWeight: '600',
+		fontSize: 14,
+		marginLeft: 4,
+	},
+	toggleButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderRadius: 8,
+		marginRight: 10,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+	},
+	toggleButtonGradient: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderRadius: 8,
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+	},
+	toggleButtonText: {
+		color: '#fff',
+		fontWeight: '600',
+		fontSize: 14,
+		marginLeft: 6,
+		height: 30, // Ensuring text fits well within the button
+	},
+	selectPaymentButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderRadius: 8,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+	},
+	selectPaymentGradient: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		borderRadius: 8,
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+	},
+	selectPaymentText: {
+		color: '#fff',
+		fontWeight: '600',
+		fontSize: 14,
+		marginLeft: 6,
+	},
+	emptyContainer: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		padding: 40,
+	},
+	emptyGradient: {
+		width: 120,
+		height: 120,
+		borderRadius: 60,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginBottom: 24,
+	},
+	emptyText: {
+		fontSize: 20,
+		fontWeight: 'bold',
+		marginBottom: 8,
+		textAlign: 'center',
+	},
+	emptySubtext: {
+		fontSize: 16,
+		textAlign: 'center',
+		marginBottom: 24,
+		lineHeight: 22,
+		paddingHorizontal: 20,
+	},
+	shopNowButton: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 20,
+		paddingVertical: 12,
+		borderRadius: 12,
+	},
+	shopNowButtonText: {
+		color: '#fff',
+		fontWeight: 'bold',
+		fontSize: 16,
+	},
+	shopOrderTitle: {
+		fontSize: 18,
+		fontWeight: 'bold',
+		marginVertical: 12,
+		textAlign: 'center',
 	},
 });

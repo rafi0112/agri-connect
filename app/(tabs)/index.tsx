@@ -89,7 +89,7 @@ export default function HomeScreen() {
 	const OPENWEATHER_API_KEY = 'd734f951c52155a9771143721b7eb908';
 
 // Animated Product Card Component
-const AnimatedProductCard = ({ children, index }) => {
+const AnimatedProductCard = ({ children, index }: { children: React.ReactNode; index: number }) => {
 	const fadeAnim = useRef(new Animated.Value(0)).current;
 	const translateY = useRef(new Animated.Value(50)).current;
 
